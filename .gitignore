@@ -1,4 +1,10 @@
 *.swap
 *~
 *.o
-*.out
+
+#Ignore files without extension (executable files)
+
+*	    #ignore all
+!*/	    #unignore all directories
+!*.*	    #unignore all files with an extension
+!Makefile   #unignore Makefile
