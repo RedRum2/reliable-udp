@@ -1,0 +1,63 @@
+1.DESCRIZIONE ARCHITETTURA
+
+	-Descrizione FTP
+
+		-Requisiti funzionali
+
+		-Descrizione comunicazione
+			-unidirezionale
+			-basata su segmenti
+
+	-Scelte architetturali: server multi-process
+		-pro:
+			-resistente ai guasti relativi ad altri client
+			-codice semplice
+			-semplice realizzare connessioni concorrenti
+		-cons:
+			-limite sulle connessioni, dato dal numero di processi che il sistema operativo permette di creare
+			-esaurimento risorse del sistema in mancanza di un limite al numero di connessioni
+		-giustificazioni:
+			-Utilizzo dei processi piuttosto che thread:
+				Essendo il trasferimento file un'operazione che può richiedere tempi di completamento significativi, è stata scelta un'architettura basata 
+				su processi, in modo da isolare i trasferimenti paralleli ed impedire che eventuali errori su una connessione provochino l'interruzione delle
+				altre, problema alquanto rilevante in tale applicazione.
+			-tempi di generazione dei processi
+				non si è ritenuto necessario effettuare un preforking, perché ciò avrebbe reso il codice più complesso
+				a fronte di un miglioramento trascurabile dei tempi di risposta, perché tali tempi sono dominati dal tempo di trasferimento del file che è
+				di vari ordini di grandezza superiore a quello di generazione del processo.
+			-Non utilizzo server a eventi
+				Per semplicità di codice
+
+	-Schema architetturale (layers)
+		-Application layer
+		-Transport layer
+	
+	Funzionalità
+		-Connessione
+		-list
+		-get
+		-put
+
+	-Caratteristiche
+		-Affidabilità
+			-selective repeat
+		-Robustezza
+			-gestione processi zombie
+			-terminazioni precoci
+
+
+2.DESCRIZIONE IMPLEMENTAZIONE
+
+		-Robustezza
+		
+3.DESCRIZIONI LIMITAZIONI
+	-Limiti fisici relativi al SO e alle risorse della macchina, l'applicazione non è scalabile
+	-Allocazione incontrollata delle strutture dati necessarie al timeout se non si perdono pacchetti, possibile disallineamento numeri di sequenza
+
+4.DESCRIZIONE AMBIENTE DI SVILUPPO E TEST
+
+5.ESEMPI DI FUNZIONAMENTO
+
+6.VALUTAZIONE DELLE PRESTAZIONI
+
+7.MANUALE INSTALLAZIONE, CONFIGURAZIONE ED ESECUZIONE
