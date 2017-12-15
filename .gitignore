@@ -1,18 +1,25 @@
 
 
+# Ignore all
+*
+
+# Unignore all with extensions
+!*.*
+
+# Unignore all dirs
+!*/
+
+#unignore Makefile
+!Makefile
+
+### Above combination will ignore all files without extension ###
+
+
+
 
 *.swap
 *~
 ign*
-
-
-#Ignore files without extension (executable files)
-
-*	    	#ignore all
-!*/	    	#unignore all directories
-!*.*	    #unignore all files with an extension
-!Makefile   #unignore Makefile
-
 
 
 
