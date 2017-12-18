@@ -128,6 +128,13 @@ size_t space_available(unsigned int s, unsigned int e)
 
 
 
+
+int min(int x, int y)
+{
+	return x <= y ? x : y;
+}
+
+
 /*
  * Function:	rdt_send
  * ----------------------------------------------------------
@@ -141,33 +148,27 @@ size_t space_available(unsigned int s, unsigned int e)
  */
 void rdt_send(const void *buf, size_t len)
 {
-    unsigned int i, n;
-    size_t size;
+    size_t free, tosend, left = len;
 
-    n = len / MSS;
-
-    for (i = 0; i <= n; i++) {
-
-		/* set the last packet's size */
-        if (i == n) {
-            size = len % MSS;
-            if (!size)	// the previous packet was the last
-                break;
-        } else
-            size = MSS;
+    while (left) {
 
         if (pthread_mutex_lock(&send_cb.mtx) != 0)
             handle_error("pthread_mutex_lock");
 
         /* check available space */
-        while (space_available(send_cb.S, send_cb.E) <= MSS)
+        while ((free = space_available(send_cb.S, send_cb.E)) <= MSS)
             if (pthread_cond_wait(&send_cb.cnd_not_full, &send_cb.mtx) !=
                 0)
                 handle_error("pthread_cond_wait");
 
-        memcpy_tocb(send_cb.buf, buf + i * MSS, size, send_cb.E,
+		tosend = left < MSS ?
+			 		left :
+			 		min(left / MSS, free / MSS) * MSS;
+
+        memcpy_tocb(send_cb.buf, buf + len - left, tosend, send_cb.E,
                     CBUF_SIZE);
-        send_cb.E = (send_cb.E + size) % CBUF_SIZE;
+        send_cb.E = (send_cb.E + tosend) % CBUF_SIZE;
+		left -= tosend;
 
         if (pthread_mutex_unlock(&send_cb.mtx) != 0)
             handle_error("pthread_mutex_unlock");
@@ -329,11 +330,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         // buffer not empty
 
         data = data_available(cb->S, cb->E);
-//      fprintf(stderr, "send_service: data available on send_buffer = %zu\n", data); 
-        if (data < MSS)
-            size = data % MSS;
-        else
-            size = MSS;
+		size = data < MSS ? data : MSS;
 
         /* store a new packet */
         store_pkt(pkts, *last_seqnum, size, cb);
