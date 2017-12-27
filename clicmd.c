@@ -30,8 +30,6 @@ void cli_list()
     /* read list size */
     rdt_recv(&file_size, sizeof(file_size));
 
-    fprintf(stderr, "%lu\n", file_size);
-
     /* allocate buffer */
     buffer = malloc(file_size);
     if (!buffer)

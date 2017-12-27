@@ -18,42 +18,20 @@ uint8_t recvcmd(void)
 }
 
 
-void execls(char *destfile_name)
-{
-    fputs("figlio\n", stderr);
-    char *argv[] = { "/bin/ls", ".", ">", destfile_name, NULL };
-    execve(argv[0], argv, environ);
-    handle_error("execvue()");
-}
-
 
 void srv_list(void)
 {
     struct stat st;
 
-    //int pid;
     int fd;
     uint64_t file_size;
     char *filename = "file_list.txt";
-    uint64_t buffer[MAX_BUFSIZE >> 3];
+    uint8_t *buffer;
 
     char *cmd = "ls > file_list.txt";
     if (system(cmd) == -1)
         handle_error("system()");
-/*
-	pid = fork();
-	if (pid == -1)
-		handle_error("fork()");
-	fputs("forkato\n", stderr);
-	fflush(stderr);
-	if (!pid) 
-		execls(filename);
-	
-	fputs("padre", stderr);
-	if (wait(NULL) == -1)
-		handle_error("wait()");
-	fputs("dopo wait", stderr);
-*/
+
     /* open the destination file of the list command */
     fd = open(filename, O_RDONLY);
     if (fd == -1)
@@ -64,9 +42,14 @@ void srv_list(void)
         handle_error("fstat()");
     file_size = st.st_size;
 
-    buffer[0] = file_size;
+	/* Allocate buffer memory */
+	buffer = malloc(sizeof(file_size) + file_size);
+	if (!buffer)
+		handle_error("malloc - allocating list buffer");
 
-    send_file(fd, buffer, file_size, sizeof(uint64_t));
+	memcpy(buffer, &file_size, sizeof(file_size));
+
+    send_file(fd, buffer, file_size, sizeof(file_size));
     if (close(fd) == -1)
         handle_error("closing file list");
 }

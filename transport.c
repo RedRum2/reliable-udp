@@ -138,13 +138,15 @@ int min(int x, int y)
 /*
  * Function:	rdt_send
  * ----------------------------------------------------------
- * TODO: Put Empty the circular buffer and put exactly len bytes into
- * the buffer buf.
- * If the circular buffer is empty, wait until any data is available.
+ * Put put data into the shared sending circular buffer, checking how
+ * much space is available, and put MSS multiples each time, in order
+ * to let the sender service to create as full as possible packets.
+ * If bytes at least MSS are not available, wait until there is enough
+ * free space.
  *
  * Parameters:
- * 		buf:	the address of the buffer wherein put data
- * 		len:	the number of bytes to draw from the buffer
+ * 		buf:	the address of the buffer containing data to send
+ * 		len:	the size of the buffer buf
  */
 void rdt_send(const void *buf, size_t len)
 {
@@ -161,12 +163,14 @@ void rdt_send(const void *buf, size_t len)
                 0)
                 handle_error("pthread_cond_wait");
 
+		/* calculate how many MMS multiples to put */
 		tosend = left < MSS ?
 			 		left :
 			 		min(left / MSS, free / MSS) * MSS;
 
         memcpy_tocb(send_cb.buf, buf + len - left, tosend, send_cb.E,
                     CBUF_SIZE);
+					
         send_cb.E = (send_cb.E + tosend) % CBUF_SIZE;
 		left -= tosend;
 
@@ -177,6 +181,7 @@ void rdt_send(const void *buf, size_t len)
             handle_error("cond_event_signal()");
     }
 }
+
 
 
 /*

@@ -5,6 +5,7 @@
 #include "strto.h"
 
 
+
 void parse_args(int argc, char **argv, struct proto_params *params,
                 uint16_t * port);
 void server_job(void);
@@ -164,7 +165,7 @@ void create_connection(struct proto_params *params,
 	if (connect(connsd, (struct sockaddr *) cliaddr, clilen) == -1)
 		handle_error("socket()");
 
-	/* send the first unreliable SYN_ACK with protocol parameters */
+	/* send SYN_ACK with protocol parameters */
 	if (udt_send(connsd, params, sizeof(struct proto_params), params->P / 100.0) == -1)
 		handle_error("udt_send() - sending SYN_ACK");
 
@@ -208,6 +209,7 @@ void server_job(void)
 }
 
 
+
 void sig_zombie_handler(int sig)
 {
   	pid_t	pid;
@@ -217,7 +219,7 @@ void sig_zombie_handler(int sig)
   	while((pid = waitpid(-1, NULL, WNOHANG)) > 0)
 		printf("Buried zombie %d\n", pid);  // UNSAFE: non-reentrant function
 
-  return;
+	return;
 }
 
 
