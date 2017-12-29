@@ -94,8 +94,7 @@ void cli_put(const char *filename)
     struct stat st;
     int fd;
     size_t header_size;
-
-    uint8_t buffer[MAX_BUFSIZE];
+    uint8_t *header;
     uint8_t cmd = PUT, outcome;
     uint64_t file_size;
 
@@ -115,18 +114,23 @@ void cli_put(const char *filename)
         handle_error("fstat()");
     file_size = st.st_size;
 
-    /* set the header */
-    memcpy(buffer, &cmd, sizeof(cmd));
-    memcpy(buffer + sizeof(cmd), filename,
-           strlen(filename) + sizeof(char));
-    memcpy(buffer + sizeof(cmd) + strlen(filename) + sizeof(char),
-           &file_size, sizeof(file_size));
-
+    /* allocate the header buffer */
     header_size = sizeof(cmd) +
         strlen(filename) + sizeof(char) + sizeof(file_size);
+    header = malloc(header_size);
+    if (!header)
+        handle_error("malloc() - allocating PUT header");
 
-    /* send file and close file descriptor */
-    send_file(fd, buffer, file_size, header_size);
+    /* set the header */
+    header[0] = cmd;
+    memcpy(header + sizeof(cmd), filename,
+           strlen(filename) + sizeof(char));
+    memcpy(header + sizeof(cmd) + strlen(filename) + sizeof(char),
+           &file_size, sizeof(file_size));
+
+    /* send file and free resources */
+    send_file(fd, header, file_size, header_size);
+    free(header);
     if (close(fd) == -1)
         handle_error("close()");
 

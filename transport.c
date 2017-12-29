@@ -131,7 +131,7 @@ size_t space_available(unsigned int s, unsigned int e)
 
 int min(int x, int y)
 {
-	return x <= y ? x : y;
+    return x <= y ? x : y;
 }
 
 
@@ -163,16 +163,14 @@ void rdt_send(const void *buf, size_t len)
                 0)
                 handle_error("pthread_cond_wait");
 
-		/* calculate how many MMS multiples to put */
-		tosend = left < MSS ?
-			 		left :
-			 		min(left / MSS, free / MSS) * MSS;
+        /* calculate how many MMS multiples to put */
+        tosend = left < MSS ? left : min(left / MSS, free / MSS) * MSS;
 
         memcpy_tocb(send_cb.buf, buf + len - left, tosend, send_cb.E,
                     CBUF_SIZE);
-					
+
         send_cb.E = (send_cb.E + tosend) % CBUF_SIZE;
-		left -= tosend;
+        left -= tosend;
 
         if (pthread_mutex_unlock(&send_cb.mtx) != 0)
             handle_error("pthread_mutex_unlock");
@@ -335,7 +333,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         // buffer not empty
 
         data = data_available(cb->S, cb->E);
-		size = data < MSS ? data : MSS;
+        size = data < MSS ? data : MSS;
 
         /* store a new packet */
         store_pkt(pkts, *last_seqnum, size, cb);
@@ -541,7 +539,7 @@ void send_packet(int sockfd, struct packet *pkt, double loss)
 {
     struct segment *sgt = &pkt->sgt;
     if (udt_send(sockfd, sgt, sizeof(struct segment), loss) == -1)
-		handle_error("udt_send() - sending packet");
+        handle_error("udt_send() - sending packet");
 }
 
 
@@ -1096,22 +1094,22 @@ void *recv_service(void *p)
 {
     struct shared_tools *tools = p;
 
-    struct circular_buffer *cb = tools->cb; 		// shared buffer with application layer
-    struct event *e = tools->e; 					// event struct to signal ack events
+    struct circular_buffer *cb = tools->cb; // shared buffer with application layer
+    struct event *e = tools->e; // event struct to signal ack events
     struct proto_params *params = tools->params;
 
-    struct window recv_window;  					// window to implement selective repeat 
-    struct segment segments_cb[params->N];  		// buffer to store arrived segments
-    struct segment *sgt;        					// temporary segment address buffer
+    struct window recv_window;  // window to implement selective repeat 
+    struct segment segments_cb[params->N];  // buffer to store arrived segments
+    struct segment *sgt;        // temporary segment address buffer
 
-	struct timeval timeout;							// connection timeout
+    struct timeval timeout;     // connection timeout
 
     double loss = params->P / 100.0;
-    uint8_t acknum;             					// temporary ack buffer
+    uint8_t acknum;             // temporary ack buffer
     size_t max_recvsize = sizeof(struct segment);   // receive buffer max size
-    char buffer[max_recvsize];  					// receive buffer
-	int sockfd = tools->sockfd;						// socket file descriptor
-    ssize_t r;                  					// return value for the read
+    char buffer[max_recvsize];  // receive buffer
+    int sockfd = tools->sockfd; // socket file descriptor
+    ssize_t r;                  // return value for the read
 
 
     /* initialize recv_window */
@@ -1120,11 +1118,11 @@ void *recv_service(void *p)
     reset(&recv_window.ack_bar);
 
 
-	/* set connection timeout */
-	timeout.tv_sec = 30;
+    /* set connection timeout */
+    timeout.tv_sec = 30;
     timeout.tv_usec = 0;
     if (setsockopt
-    	(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1)
+        (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1)
         handle_error("setting socket timeout");
 
 
@@ -1134,18 +1132,18 @@ void *recv_service(void *p)
 
         if (r == -1) {
 
-			if (errno == EINTR)
-			 	// signal interruption
-			 	continue;
+            if (errno == EINTR)
+                // signal interruption
+                continue;
 
-			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				// timeout expired: close connection
-				fputs("Connection expired\n", stderr);
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // timeout expired: close connection
+                fputs("Connection expired\n", stderr);
                 exit(EXIT_SUCCESS);
-			}
+            }
 
             handle_error("recv_service - read()");
-		}
+        }
 
 
         /* segment received */
@@ -1155,8 +1153,10 @@ void *recv_service(void *p)
             if (process_segment(sgt, segments_cb, &recv_window, cb)) {
                 /* send ACK */
                 fprintf(stderr, "try to send ACK %u\n", sgt->seqnum);
-                if (udt_send(tools->sockfd, &sgt->seqnum, sizeof(uint8_t), loss) == -1)
-					handle_error("udt_send() - sending ACK");
+                if (udt_send
+                    (tools->sockfd, &sgt->seqnum, sizeof(uint8_t),
+                     loss) == -1)
+                    handle_error("udt_send() - sending ACK");
             }
             continue;
         }

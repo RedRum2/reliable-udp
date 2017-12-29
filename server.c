@@ -68,9 +68,9 @@ int main(int argc, char **argv)
         -1)
         handle_error("bind()");
 
-	
-	/* register SIGCHLD signal handler */
-	register_zombie_handler();
+
+    /* register SIGCHLD signal handler */
+    register_zombie_handler();
 
 
     for (;;) {
@@ -80,33 +80,33 @@ int main(int argc, char **argv)
 
 
         /* wait for connection requests */
-		errno = 0;
+        errno = 0;
         if (recvfrom
             (sockfd, buf, MAXLINE, 0, (struct sockaddr *) &cliaddr,
              &clilen) == -1) {
 
-			 if (errno == EINTR)
-			 	// signal interruption
-			 	continue;
+            if (errno == EINTR)
+                // signal interruption
+                continue;
 
             handle_error("waiting for connection requests");
-		}
+        }
 
 
-		/* create a new proccess to handle the client requests */
-		pid = fork();
+        /* create a new proccess to handle the client requests */
+        pid = fork();
 
-		if (pid == -1)
-			handle_error("fork()");
+        if (pid == -1)
+            handle_error("fork()");
 
-		if (!pid) {                 // child process
+        if (!pid) {             // child process
 
-			/* close duplicated listen socket */
-			if (close(sockfd) == -1)
-				handle_error("close()");
+            /* close duplicated listen socket */
+            if (close(sockfd) == -1)
+                handle_error("close()");
 
-			create_connection(&params, &cliaddr, clilen);
-		}
+            create_connection(&params, &cliaddr, clilen);
+        }
     }
 
     /* NEVER REACHED */
@@ -157,21 +157,23 @@ void create_connection(struct proto_params *params,
 {
     int connsd;
 
-	/* create a connection socket */
-	if ((connsd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-		handle_error("socket()");
+    /* create a connection socket */
+    if ((connsd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+        handle_error("socket()");
 
-	/* set the end point */
-	if (connect(connsd, (struct sockaddr *) cliaddr, clilen) == -1)
-		handle_error("socket()");
+    /* set the end point */
+    if (connect(connsd, (struct sockaddr *) cliaddr, clilen) == -1)
+        handle_error("socket()");
 
-	/* send SYN_ACK with protocol parameters */
-	if (udt_send(connsd, params, sizeof(struct proto_params), params->P / 100.0) == -1)
-		handle_error("udt_send() - sending SYN_ACK");
+    /* send SYN_ACK with protocol parameters */
+    if (udt_send
+        (connsd, params, sizeof(struct proto_params),
+         params->P / 100.0) == -1)
+        handle_error("udt_send() - sending SYN_ACK");
 
-	init_transport(connsd, params);
+    init_transport(connsd, params);
 
-	server_job();
+    server_job();
 }
 
 
@@ -212,25 +214,25 @@ void server_job(void)
 
 void sig_zombie_handler(int sig)
 {
-  	pid_t	pid;
+    pid_t pid;
 
-	(void) sig;	
+    (void) sig;
 
-  	while((pid = waitpid(-1, NULL, WNOHANG)) > 0)
-		printf("Buried zombie %d\n", pid);  // UNSAFE: non-reentrant function
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+        printf("Buried zombie %d\n", pid);  // UNSAFE: non-reentrant function
 
-	return;
+    return;
 }
 
 
 void register_zombie_handler(void)
 {
-	struct sigaction sa;
+    struct sigaction sa;
 
-	sa.sa_handler = sig_zombie_handler;
-	sa.sa_flags = SA_RESTART;
-	sigemptyset(&sa.sa_mask);
+    sa.sa_handler = sig_zombie_handler;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
 
-	if (sigaction(SIGCHLD, &sa, NULL) == -1)
-		handle_error("sigaction()");
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+        handle_error("sigaction()");
 }

@@ -48,12 +48,12 @@ double randgen(void)
  * 		the number of bytes sent on success
  * 		-1 on error
  */
-ssize_t udt_sendto(int sockfd, const void *buf, size_t len, 
-				 const struct sockaddr *addr, socklen_t addrlen,
-                 double loss)
+ssize_t udt_sendto(int sockfd, const void *buf, size_t len,
+                   const struct sockaddr * addr, socklen_t addrlen,
+                   double loss)
 {
     double drand = randgen();
-	ssize_t retval = len;
+    ssize_t retval = len;
 
     // necessary flow control into a local network
     if (loss < 0.1)
@@ -62,11 +62,10 @@ ssize_t udt_sendto(int sockfd, const void *buf, size_t len,
     if (drand > loss) {
         retval = sendto(sockfd, buf, len, 0, addr, addrlen);
         fputs("frame sent\n", stderr);
-    } 
-	else
+    } else
         fputs("frame lost\n", stderr);
 
-	return retval;
+    return retval;
 }
 
 
@@ -90,5 +89,5 @@ ssize_t udt_sendto(int sockfd, const void *buf, size_t len,
  */
 ssize_t udt_send(int sockfd, void *buf, size_t size, double loss)
 {
-	return udt_sendto(sockfd, buf, size, NULL, 0, loss);
+    return udt_sendto(sockfd, buf, size, NULL, 0, loss);
 }

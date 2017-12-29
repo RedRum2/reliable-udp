@@ -60,7 +60,7 @@ void create_connection(int sockfd, struct sockaddr_in *addr)
 
     addrlen = sizeof(struct sockaddr);
 
-	/* set receiving timeout on the socket */
+    /* set receiving timeout on the socket */
     timeout.tv_sec = 5;
     timeout.tv_usec = 0;
     if (setsockopt
@@ -71,12 +71,14 @@ void create_connection(int sockfd, struct sockaddr_in *addr)
     while (!connected) {
 
         /* send SYN */
-        if (udt_sendto(sockfd, NULL, 0, (struct sockaddr *) addr, addrlen, 0.3) == -1)
-			handle_error("udt_sendto() - sending SYN");
+        if (udt_sendto
+            (sockfd, NULL, 0, (struct sockaddr *) addr, addrlen,
+             0.3) == -1)
+            handle_error("udt_sendto() - sending SYN");
         fputs("SYN sent, waiting for SYN ACK\n", stderr);
 
         /* get SYN_ACK and server connection address */
-		errno = 0;
+        errno = 0;
         if (recvfrom
             (sockfd, &params, sizeof(params), 0, (struct sockaddr *) addr,
              &addrlen) == -1) {
