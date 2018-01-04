@@ -1,0 +1,16 @@
+\subsection{Scelta del modello}
+
+La gestione contemporanea di più client viene realizzata da un server di tipo multi-processo.\\
+La scelta di tale modello è stata effettuata tenendo conto dei seguenti criteri:
+\begin{itemize}
+\item Semplicità del codice
+\item Tolleranza ai guasti
+\item Efficienza
+\item Utilizzo delle risorse di sistema
+\end{itemize}
+%La scelta è stata effettuata in base alle esigenze di un generico utente di un applicazione FTP.
+Un'applicazione di questo tipo coinvolge file di grosse dimensioni, che vanno dalle centinaia di megabyte fino all'ordine dei gigabyte. Il trasferimento di tali file richiede tempi consideroveli dell'ordine dei minuti, per questo motivo è di fondamentale importanza che il trasferimento subisca meno intoppi possibili, in particolere è necessario che un fallimento riguardante la connessione con un client non coinvolga le altre connessioni. Si immagini, ad esempio, lo sconforto di un utente che dopo decine di minuti di download, si vede cadere la connessione a seguito di un problema sconosciuto e che non dipende da lui.\\
+Questo fatto rende la gestione dei guasti il criterio dominante, pertanto si è scelto il modello di server a processi in cui le connessioni vengono gestite da singoli processi ``isolati'', nel senso che il fallimento di un processo non inficia in nessun modo l'esecuzione degli altri processi.
+
+Se, con i processi, da un lato si ottiene tolleranza ai guasti, dall'altro si perde in efficienza, poiché si introduce un overhead significativo per la creazione dei processi ed il cambio di contesto.\\
+Nonostante si sarebbe potuto ridurre l'overhead dovuto alla creazione dei processi tramite lo sviluppo di un modello a preforking, si è scelto di ignorare questa possibilità perché ciò avrebbe reso il codice più complesso a fronte di un miglioramento dei tempi di risposta trascurabile, infatti tali tempi sono dominati dal tempo di trasferimento del file che è di vari ordini di grandezza superiore a quello di generazione del processo.

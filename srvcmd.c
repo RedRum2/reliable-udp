@@ -3,10 +3,6 @@
 #include "transport.h"
 #include "cmd_commons.h"
 
-#include <sys/wait.h>
-
-extern char **environ;
-
 
 uint8_t recvcmd(void)
 {
@@ -28,6 +24,7 @@ void srv_list(void)
     char *filename = "file_list.txt";
     uint8_t *header;
 
+    /* execute ls command */
     char *cmd = "ls > file_list.txt";
     if (system(cmd) == -1)
         handle_error("system() - executing ls command");
@@ -47,9 +44,12 @@ void srv_list(void)
     if (!header)
         handle_error("malloc() - allocating LIST header");
 
+    /* set the header */
     memcpy(header, &file_size, sizeof(file_size));
 
+    /* send file and free resources */
     send_file(fd, header, file_size, sizeof(file_size));
+    free(header);
     if (close(fd) == -1)
         handle_error("close() - closing file list");
 }
@@ -115,10 +115,8 @@ void report_error(const char *msg)
 {
     uint8_t outcome = PUT_FAILURE;
     rdt_send(&outcome, sizeof(outcome));
-    fprintf(stderr, "PUT failed: %s\n", msg);
+    printf("PUT failed: %s\n", msg);
 }
-
-
 
 
 void srv_put(void)

@@ -21,11 +21,13 @@
 #define MAXLINE		1024
 #define MAX_BUFSIZE 4096	
 
+// command codes
 #define LIST 		0
 #define GET 		1
 #define PUT 		2
 #define MAXCMD 		2
 
+// response codes
 #define GET_OK 		0
 #define GET_NOENT 	1
 #define PUT_SUCCESS 2

@@ -1,0 +1,140 @@
+\subsection{Connessione}
+La comunicazione tra client e server avviene a seguito dell'instaurazione di una connessione senza autenticazione.\\
+Il client quando vuole connettersi al server invia un messaggio di SYN, dopodiché si mette in attesa di un messaggio di risposta (SYNACK) contenente i parametri necessari alla creazione delle strutture che gestiscono la communicazione affidabile. Questa attesa è limitata dalla presenza di un timer di 5 secondi, allo scadere del quale avviene un nuovo tentativo di connessione reinviando il messaggio di SYN.\\
+Ricevuto il messaggio di risposta vengono create ed inizializzate le strutture di comunicazione e la connessione risulta instaurata, da questo istante è possibile inviare comandi al server in modo affidabile.\\
+Poiché, al momento della richiesta di connessione, non si dispone nemmeno del parametro relativo alla probabilità di perdita di un pacchetto, il messaggio di SYN viene inviato con probabilità di perdita pari al 20\%.
+
+\begin{lstlisting}[title=client:instaurazione della connessione]
+
+	...
+
+/* set receiving timeout on the socket */
+timeout.tv_sec = 5;
+timeout.tv_usec = 0;
+if (setsockopt
+	(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout))
+	== -1)
+	handle_error("setting socket timeout");
+
+while (!connected) {
+
+	/* send SYN */
+	if (udt_sendto(sockfd, NULL, 0, (struct sockaddr *) addr, 
+		addrlen, 0.2) == -1)
+		handle_error("udt_sendto() - sending SYN");
+	fputs("SYN sent, waiting for SYN ACK\n", stderr);
+
+	/* get SYN_ACK and server connection address */
+	errno = 0;
+	if (recvfrom
+		(sockfd, &params, sizeof(params), 0,
+		(struct sockaddr *) addr, &addrlen) == -1) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			// timeout expired
+			continue;
+		handle_error("recvfrom()");
+	}
+
+	connected = true;
+}
+
+/* turn timeout off */
+timeout.tv_sec = 0;
+timeout.tv_usec = 0;
+if (setsockopt
+	(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) 
+	== -1)
+	handle_error("setting socket timeout");
+
+/* set the endpoint */
+if (connect(sockfd, (struct sockaddr *) addr, addrlen) == -1)
+	handle_error("connect()");
+
+/* initialize transport layer */
+init_transport(sockfd, &params);
+
+	...
+
+\end{lstlisting}
+
+
+Il server, costantemente in attesa di richieste di connessione, alla ricezione di un messaggio di SYN, crea un processo figlio al quale affida il compito di inviare i parametri di connessione e di gestire la connessione con il client.
+
+\begin{lstlisting}[title=server:instaurazione della connessione]
+
+	...
+
+for (;;) {
+
+	clilen = sizeof(cliaddr);
+	memset((void *) &cliaddr, 0, clilen);
+
+	/* wait for connection requests */
+	errno = 0;
+	if (recvfrom
+		(sockfd, buf, MAXLINE, 0, (struct sockaddr *) &cliaddr,
+		 &clilen) == -1) {
+
+		 if (errno == EINTR)
+			// signal interruption
+			continue;
+
+		handle_error("waiting for connection requests");
+	}
+
+	/* create a new proccess to handle the client requests */
+	pid = fork();
+
+	if (pid == -1)
+		handle_error("fork()");
+
+	if (!pid) {                 // child process
+
+		/* close duplicated listen socket */
+		if (close(sockfd) == -1)
+			handle_error("close()");
+
+		create_connection(&params, &cliaddr, clilen);
+	}
+}
+
+	......
+
+\end{lstlisting}
+
+
+Il processo figlio crea una nuova socket e tramite quest'ultima invia al client i parametri del protocollo di comunicazione affidabile.
+Poi imposta l'indirizzo del client come destinazione prefissata, inizializza la connessione e rimane in attesa di eventuali comandi da parte del client.
+
+\begin{lstlisting}[title=connessione del nuovo processo]
+void create_connection(struct proto_params *params,
+					   struct sockaddr_in *cliaddr, socklen_t clilen)
+{
+	int connsd;
+
+	/* create a connection socket */
+	if ((connsd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+		handle_error("socket()");
+
+	/* set the end point */
+	if (connect(connsd, (struct sockaddr *) cliaddr, clilen) == -1)
+		handle_error("socket()");
+
+	/* send SYN_ACK with protocol parameters */
+	if (udt_send(connsd, params, sizeof(struct proto_params), 
+		params->P / 100.0) == -1)
+		handle_error("udt_send() - sending SYN_ACK");
+
+	init_transport(connsd, params);
+
+	server_job();
+}
+\end{lstlisting}
+
+
+Un limite di questa implementazione consiste nel fatto che il server non sa distinguere se un SYN proviene da un nuovo client oppure è un tentativo di riconnessione, per cui, se si verifica il secondo caso, il processo server d'ascolto crea un nuovo figlio quando ce n'era già uno in attesa di richieste di quel client.
+In questo modo se si perdono molteplici SYNACK destinati ad uno specifico client, verranno creati altrettanti processi server che rimarranno in attesa di richieste che non arriveranno mai.\\
+Una possibile soluzione a questo problema sarebbe quella di far mantenere al server informazioni, di durata limitata, che permettano di capire se per il client che effettua la richiesta di connessione, esiste già un processo dedicato. In tal caso, basterebbe comunicare al processo figlio in questione di inviare di nuovo il messaggio di SYNACK.\\
+Questa soluzione implicherebbe la gestione di una lista di associazioni client-pid, che andrebbe scandita ad ogni ricezione di messaggi SYN, e della comunicazione tra processo padre e processo figlio, quindi per motivi di efficenza e semplicità del codice, si è scelto di non implementarla.\\
+Ad ogni modo un processo di connessione, se non riceve comandi per un tempo pari a 1 minuto, termina la propria esecuzione, liberando così preziose risorse.\\
+(La gestione dei processi zombie verrà descritta più avanti).

@@ -3,7 +3,16 @@
 #include "cmd_commons.h"
 
 
-
+/* Function:	get_cmdcode
+ * ------------------------------------------
+ * Return the code related to the string in input.
+ *
+ * Parameters:
+ * 		input	command in string format
+ *
+ * Returns:
+ * 		the code related to the command
+ */
 unsigned short get_cmdcode(const char *input)
 {
     unsigned short i;
@@ -38,8 +47,6 @@ void cli_list()
     /* recv file list */
     rdt_recv(buffer, file_size);
 
-    fputs("file list received", stderr);
-
     /* print file list and free memory */
     printf("\n%s\n", buffer);
     free(buffer);
@@ -68,7 +75,7 @@ void cli_get(const char *filename)
 
     /* check response code */
     if (code == GET_NOENT) {    // file not found
-        fprintf(stderr, "File \"%s\" does not exist.\n", filename);
+        printf("File \"%s\" does not exist.\n", filename);
         return;
     }
 
@@ -77,14 +84,14 @@ void cli_get(const char *filename)
 
     /* open file */
     if ((fd = open(filename, O_WRONLY | O_CREAT, 0644)) == -1)
-        handle_error("open()");
+        handle_error("open() - opening GET destination file");
 
     /* receive and store the file */
     recv_file(fd, file_size);
 
     /* close file */
     if (close(fd) == -1)
-        handle_error("close()");
+        handle_error("close() - closing GET destination file");
 }
 
 
@@ -106,12 +113,12 @@ void cli_put(const char *filename)
             printf("The file \"%s\" does not exist\n", filename);
             return;
         } else
-            handle_error("open()");
+            handle_error("open() - opening PUT file");
     }
 
     /* get file size */
     if (fstat(fd, &st) == -1)
-        handle_error("fstat()");
+        handle_error("fstat() - getting PUT file stats");
     file_size = st.st_size;
 
     /* allocate the header buffer */
@@ -132,7 +139,7 @@ void cli_put(const char *filename)
     send_file(fd, header, file_size, header_size);
     free(header);
     if (close(fd) == -1)
-        handle_error("close()");
+        handle_error("close() - closing PUT file");
 
     /* receive and print operation outcome */
     rdt_recv(&outcome, sizeof(outcome));

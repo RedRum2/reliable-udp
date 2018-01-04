@@ -1,0 +1,57 @@
+\documentclass[a4paper,titlepage]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{listings}
+%\usepackage{syntonly}
+%\syntaxonly
+
+\pagestyle{headings}
+
+%\includeonly{}
+
+\lstset{
+	language=C,
+	frame=single,
+	basicstyle=\footnotesize,
+	tabsize=3,
+	inputencoding=utf8,
+	literate={==}{= =}{3}
+}
+
+\title{Reliable UDP}
+\author{Simone Falvo}
+
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+
+\tableofcontents
+\newpage
+
+\section{Architettura}
+\input{sections/architettura/intro}
+\input{sections/architettura/server}
+\input{sections/architettura/strati}
+
+\section{Implementazione}
+\input{sections/implementazione/udt}
+\input{sections/implementazione/connessione}
+\input{sections/implementazione/protocollo}
+\input{sections/implementazione/list}
+\input{sections/implementazione/get}
+\input{sections/implementazione/put}
+
+\section{Test}
+
+\section{Esempi di funzionamento}
+
+\section{Analisi delle prestazioni}
+
+\section{Installazione e congurazione}
+
+\end{document}

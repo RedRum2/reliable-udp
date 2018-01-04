@@ -1,0 +1,101 @@
+\subsection{Comando LIST}
+
+Nel messaggio di comando list non sono previsti campi aggiuntivi oltre a quello che specifica il comando
+\newline
+
+\begin{tabular}{|c|}
+\hline
+LIST\\ 
+\hline
+\end{tabular}
+
+\begin{tabular}{c}
+8 bit\\ 
+\end{tabular}
+
+Il server ricevuto il comando, esegue il comando di sistema \emph{ls} redirigendo l'output sul file \emph{file\_list.txt}, dopodiché viene impostato il messaggio di risposta con la dimensione del file (campo da 64 bit) e a seguire il file contenente la lista dei file disponibili al download.
+\newline
+
+%	+---------+-------------------------+
+%	|file_size|  ..		file		..	|
+%	+---------+-------------------------+
+%	  64 bit
+
+\begin{tabular}{|c|c|}
+\hline
+file\_size & ...              file              ... \\ 
+\hline
+\end{tabular}
+
+\begin{tabular}{c}
+64 bit\\ 
+\end{tabular}
+
+
+\begin{lstlisting}[title=clicmd.c]
+void cli_list()
+{
+    uint8_t cmd = LIST;
+    uint64_t file_size;
+    char *buffer;
+
+    /* send LIST command */
+    rdt_send(&cmd, sizeof(cmd));
+
+    /* read list size */
+    rdt_recv(&file_size, sizeof(file_size));
+
+    /* allocate buffer */
+    buffer = malloc(file_size);
+    if (!buffer)
+        handle_error("malloc()");
+
+    /* recv file list */
+    rdt_recv(buffer, file_size);
+
+    /* print file list and free memory */
+    printf("\n%s\n", buffer);
+    free(buffer);
+}                                                                
+\end{lstlisting}
+
+\begin{lstlisting}[title=srvcmd.c]
+void srv_list(void)
+{
+    struct stat st;
+
+    int fd;
+    uint64_t file_size;
+    char *filename = "file_list.txt";
+    uint8_t *header;
+
+	/* execute ls command */
+    char *cmd = "ls > file_list.txt";
+    if (system(cmd) == -1)
+        handle_error("system() - executing ls command");
+
+    /* open the destination file of the list command */
+    fd = open(filename, O_RDONLY);
+    if (fd == -1)
+        handle_error("open() - opening LIST file");
+
+    /* calculate file size */
+    if (fstat(fd, &st) == -1)
+        handle_error("fstat() - getting LIST file stats");
+    file_size = st.st_size;
+
+    /* allocate header buffer */
+    header = malloc(sizeof(file_size));
+    if (!header)
+        handle_error("malloc() - allocating LIST header");
+
+	/* set the header */
+    memcpy(header, &file_size, sizeof(file_size));
+
+	/* send file and free resources */
+    send_file(fd, header, file_size, sizeof(file_size));
+	free(header);
+    if (close(fd) == -1)
+        handle_error("close() - closing file list");
+}
+\end{lstlisting}
