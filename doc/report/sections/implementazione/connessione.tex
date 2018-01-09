@@ -4,7 +4,7 @@ Il client quando vuole connettersi al server invia un messaggio di SYN, dopodich
 Ricevuto il messaggio di risposta vengono create ed inizializzate le strutture di comunicazione e la connessione risulta instaurata, da questo istante è possibile inviare comandi al server in modo affidabile.\\
 Poiché, al momento della richiesta di connessione, non si dispone nemmeno del parametro relativo alla probabilità di perdita di un pacchetto, il messaggio di SYN viene inviato con probabilità di perdita pari al 20\%.
 
-\begin{lstlisting}[title=client:instaurazione della connessione]
+\begin{lstlisting}[title=client: instaurazione della connessione]
 
 	...
 
@@ -60,7 +60,7 @@ init_transport(sockfd, &params);
 
 Il server, costantemente in attesa di richieste di connessione, alla ricezione di un messaggio di SYN, crea un processo figlio al quale affida il compito di inviare i parametri di connessione e di gestire la connessione con il client.
 
-\begin{lstlisting}[title=server:instaurazione della connessione]
+\begin{lstlisting}[title=server: instaurazione della connessione]
 
 	...
 

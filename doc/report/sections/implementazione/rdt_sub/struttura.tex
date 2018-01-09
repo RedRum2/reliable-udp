@@ -1,0 +1,89 @@
+\subsubsection{Struttura}
+Lo strato di trasporto virtuale è visto dall'esterno come una black box che prende in ingresso messaggi dal livello applicativo, e restituisce i messaggi di risposta dell'host interlocutore.\\
+Nello specifico un messaggio viene frammentato in segmenti di una misura massima prefissata (MSS), i quali poi vengono inviati e gestiti tramite l'algoritmo di trasferimento affidabile, in questo modo vi è la garanzia che un segmento non venga ulteriormente suddiviso a livello di collegamento.\\
+La dimensione massima del segmento è stata calcolata considerando un MTU relativo ad un collegamento Ethernet standard di 1500 byte, un header UDP/IP di 28 byte ed un header contente i parametri necessari all'esecuzione dell'algoritmo siffatto: il numero di sequenza del segmento pari ad 1 byte e la quantità di byte significativi nel payload pari a 2 byte.
+
+%MSS = MTU - UDP/IP - SR
+
+\begin{lstlisting}[title=transport.h]
+
+#define MTU             1500
+#define UDPIP_HEADER    28
+#define SR_HEADER       (sizeof(uint8_t) + sizeof(uint16_t))
+
+#define MSS             (MTU - UDPIP_HEADER - SR_HEADER)
+
+
+struct segment {
+	uint8_t  seqnum;
+	uint16_t size;
+	uint8_t  payload[MSS];
+};
+\end{lstlisting}
+
+Il livello di trasporto è composto principalmente da due servizi indipendenti, uno che uno che interpreta il ruolo di mittente del protocollo, l'altro di destinatario.//
+Entrambi vengono implementati tramite thread, affinché sia possibile che un host invii segmenti e riceva ACK contemporaneamente.//
+L'operazione di creazione di questi thread, sia lato mittente che destinatario (con gli stessi parametri), equivale all'instaurazione della connessione,
+e viene eseguita dalla funzione \emph[init\_transport].
+
+\begin{lstlisting}[transport.c]
+void init_transport(int sockfd, struct proto_params *params)
+{
+    pthread_t t;
+
+
+    /* initialize circular buffers */
+
+    recv_cb.E = recv_cb.S = 0;
+    send_cb.E = send_cb.S = 0;
+
+
+    /* initialize shared tools */
+
+    recv_tools.sockfd = sockfd;
+    recv_tools.e = &e;
+    recv_tools.cb = &recv_cb;
+    recv_tools.params = params;
+
+    send_tools = recv_tools;
+    send_tools.cb = &send_cb;
+
+
+    /* initialize mutexes */
+
+    if (pthread_mutex_init(&e.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+    if (pthread_mutex_init(&recv_cb.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+    if (pthread_mutex_init(&send_cb.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+
+
+    /* initialize conditions */
+
+    if (pthread_cond_init(&recv_cb.cnd_not_empty, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&send_cb.cnd_not_empty, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+    if (pthread_cond_init(&recv_cb.cnd_not_full, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&send_cb.cnd_not_full, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+    if (pthread_cond_init(&e.cnd_event, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&e.cnd_no_event, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+
+    /* create threads */
+
+    if (pthread_create(&t, NULL, recv_service, &recv_tools) != 0)
+        handle_error("creating recv_service");
+
+    if (pthread_create(&t, NULL, send_service, &send_tools) != 0)
+        handle_error("creating send_service");
+
+}
+\end{lstlisting}

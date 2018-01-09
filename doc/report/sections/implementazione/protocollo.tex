@@ -18,18 +18,9 @@ I primi 8 bit di un messaggio di comando indicano sempre il tipo di comando da e
 #define PUT_FAILURE 3
 \end{lstlisting}
 
-
-\renewcommand{\arraystretch}{1.5}
-\begin{tabular}{|c|c|}
-\hline
-CMD &    ....    ....    ....    \\
-\hline
-\end{tabular}
-
-\begin{tabular}{c}
-8 bit 
-\end{tabular}
-
+%\begin{figure}
+\includegraphics[scale=0.35]{images/gen_message}
+%\end{figure}
 
 Una volta impostati i vari campi in un buffer, se non va inviato un file, i dati vengono passati direttamente al livello di trasporto virtuale.\\
 Se altrimenti, va inviato un file, viene chiamata la funzione \emph{send\_file}, i campi informativi vengono considerati un header per il file ed il tutto viene frammentato (per non allocare troppa RAM) e passato al livello sottostante.\\

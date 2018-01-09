@@ -1,36 +1,12 @@
 \subsection{Comando LIST}
 
-Nel messaggio di comando list non sono previsti campi aggiuntivi oltre a quello che specifica il comando
-\newline
+Nel messaggio di comando list non sono previsti campi aggiuntivi oltre a quello che specifica il comando.
 
-\begin{tabular}{|c|}
-\hline
-LIST\\ 
-\hline
-\end{tabular}
-
-\begin{tabular}{c}
-8 bit\\ 
-\end{tabular}
+\includegraphics[scale=0.35]{images/list_client}
 
 Il server ricevuto il comando, esegue il comando di sistema \emph{ls} redirigendo l'output sul file \emph{file\_list.txt}, dopodiché viene impostato il messaggio di risposta con la dimensione del file (campo da 64 bit) e a seguire il file contenente la lista dei file disponibili al download.
-\newline
 
-%	+---------+-------------------------+
-%	|file_size|  ..		file		..	|
-%	+---------+-------------------------+
-%	  64 bit
-
-\begin{tabular}{|c|c|}
-\hline
-file\_size & ...              file              ... \\ 
-\hline
-\end{tabular}
-
-\begin{tabular}{c}
-64 bit\\ 
-\end{tabular}
-
+\includegraphics[scale=0.35]{images/list_server}
 
 \begin{lstlisting}[title=clicmd.c]
 void cli_list()
@@ -62,14 +38,13 @@ void cli_list()
 \begin{lstlisting}[title=srvcmd.c]
 void srv_list(void)
 {
-    struct stat st;
-
     int fd;
+    struct stat st;
     uint64_t file_size;
-    char *filename = "file_list.txt";
     uint8_t *header;
+    char *filename = "file_list.txt";
 
-	/* execute ls command */
+    /* execute ls command */
     char *cmd = "ls > file_list.txt";
     if (system(cmd) == -1)
         handle_error("system() - executing ls command");
@@ -89,12 +64,12 @@ void srv_list(void)
     if (!header)
         handle_error("malloc() - allocating LIST header");
 
-	/* set the header */
+    /* set the header */
     memcpy(header, &file_size, sizeof(file_size));
 
-	/* send file and free resources */
+    /* send file and free resources */
     send_file(fd, header, file_size, sizeof(file_size));
-	free(header);
+    free(header);
     if (close(fd) == -1)
         handle_error("close() - closing file list");
 }

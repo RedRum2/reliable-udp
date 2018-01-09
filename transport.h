@@ -13,15 +13,16 @@
 
 #define MTU 			1500
 #define UDPIP_HEADER 	28
-#define MSS 			((MTU - UDPIP_HEADER - sizeof(uint8_t) - sizeof(uint16_t)) / sizeof(char))
+#define SR_HEADER		(sizeof(uint8_t) + sizeof(uint16_t))
+#define MSS 			(MTU - UDPIP_HEADER - SR_HEADER)
 #define CBUF_SIZE 		(5 * MSS)
-#define MAXSEQNUM		(1 << (8 * sizeof(uint8_t)))
+#define MAXSEQNUM		(1 << 8)
 
 
 struct segment {
 	uint8_t seqnum;
 	uint16_t size;
-	char payload[MSS];
+	uint8_t payload[MSS];
 };
 
 struct packet {

@@ -5,7 +5,7 @@ si ponesse logicamente tra applicazione e livello di trasporto e che astraesse
 un protocollo di trasporto affidabile.\\
 Tale strato di ``pseudo-trasporto'', (o livello di trasporto virtuale), fornisce un'interfaccia all'applicazione 
 per mezzo delle funzioni \emph{rdt\_send} e \emph{rdt\_recv} simile a quella 
-offerta dalle API \emph{sendto} e \emph{recvfrom} utilizzate per UDP, 
+offerta dalle chiamate di sistema \emph{write} e \emph{read} utilizzate per TCP, 
 quindi tutto ciò che riguarda l'implementazione necessaria a garantire 
 affidabilità è trasparente al livello applicativo puro.\\
 Tuttavia la trasparenza non è del tutto completa perché, affinché questo strato

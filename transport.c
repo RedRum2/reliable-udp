@@ -138,10 +138,10 @@ int min(int x, int y)
 /*
  * Function:	rdt_send
  * ----------------------------------------------------------
- * Put put data into the shared sending circular buffer, checking how
+ * Put data into the shared sending circular buffer, checking how
  * much space is available, and put MSS multiples each time, in order
  * to let the sender service to create as full as possible packets.
- * If bytes at least MSS are not available, wait until there is enough
+ * If at least MSS bytes are not available, wait until there is enough
  * free space.
  *
  * Parameters:
@@ -163,20 +163,21 @@ void rdt_send(const void *buf, size_t len)
                 0)
                 handle_error("pthread_cond_wait");
 
-        /* calculate how many MMS multiples to put */
+        /* calculate how much data to send */
         tosend = left < MSS ? left : min(left / MSS, free / MSS) * MSS;
 
         memcpy_tocb(send_cb.buf, buf + len - left, tosend, send_cb.E,
                     CBUF_SIZE);
 
         send_cb.E = (send_cb.E + tosend) % CBUF_SIZE;
-        left -= tosend;
 
         if (pthread_mutex_unlock(&send_cb.mtx) != 0)
             handle_error("pthread_mutex_unlock");
 
         if (cond_event_signal(&e, PKT_EVENT) == -1)
             handle_error("cond_event_signal()");
+
+        left -= tosend;
     }
 }
 
@@ -185,8 +186,8 @@ void rdt_send(const void *buf, size_t len)
 /*
  * Function:	rdt_recv	
  * ----------------------------------------------------------
- * Empty the circular buffer and put exactly len bytes into
- * the buffer buf.
+ * Empty the circular buffer and put as much data as possibile into 
+ * the buffer buf until to put exactly len bytes. 
  * If the circular buffer is empty, wait until any data is available.
  *
  * Parameters:
@@ -195,11 +196,9 @@ void rdt_send(const void *buf, size_t len)
  */
 void rdt_recv(void *buf, size_t len)
 {
-    size_t data, toread, read;
+    size_t data, toread, left = len;
 
-    read = 0;
-
-    while (read != len) {
+    while (left) {
 
         if (pthread_mutex_lock(&recv_cb.mtx) != 0)
             handle_error("pthread_mutex_lock");
@@ -210,12 +209,12 @@ void rdt_recv(void *buf, size_t len)
                 0)
                 handle_error("pthread_cond_wait");
 
+        /* circular buffer not empty */
         data = data_available(recv_cb.S, recv_cb.E);
-        toread = data < len - read ? data : len - read;
-        memcpy_fromcb(buf + read, recv_cb.buf, toread, recv_cb.S,
+        toread = data < left ? data : left;
+        memcpy_fromcb(buf + len - left, recv_cb.buf, toread, recv_cb.S,
                       CBUF_SIZE);
         recv_cb.S = (recv_cb.S + toread) % CBUF_SIZE;
-
 
         if (pthread_cond_signal(&recv_cb.cnd_not_full) != 0)
             handle_error("pthread_cond_signal");
@@ -223,7 +222,7 @@ void rdt_recv(void *buf, size_t len)
         if (pthread_mutex_unlock(&recv_cb.mtx) != 0)
             handle_error("pthread_mutex_unlock");
 
-        read += toread;
+        left -= toread;
     }
 }
 
@@ -312,7 +311,7 @@ bool buffer_free(unsigned int base, unsigned int last)
  * ------------------------------------------------
  * Remove application data from the circular buffer,
  * make packets and store them into a local buffer.
- * Do this process until the circular buffer is not empty and the
+ * Do this until the circular buffer is not empty and the
  * local buffer has enough free space to store packets.
  *
  * Parameters:
@@ -330,7 +329,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         handle_error("pthread_mutex_lock");
 
     while (cb->S != cb->E && buffer_free(w->base, *last_seqnum)) {
-        // buffer not empty
+        // shared buffer not empty and local buffer not full
 
         data = data_available(cb->S, cb->E);
         size = data < MSS ? data : MSS;
@@ -338,10 +337,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         /* store a new packet */
         store_pkt(pkts, *last_seqnum, size, cb);
         *last_seqnum = (*last_seqnum + 1) % MAXSEQNUM;
-//      fprintf(stderr, "lastseqnum = %u\n", *last_seqnum);
         cb->S = (cb->S + size) % CBUF_SIZE;
-
-//      fprintf(stderr, "send_service: send_cb S=%u E=%u\n", cb->S, cb->E);
 
         if (pthread_cond_signal(&cb->cnd_not_full) != 0)
             handle_error("pthread_cond_signal");
@@ -642,17 +638,19 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
                   struct queue_t *time_queue, struct timespec *timeout)
 {
     static unsigned int nextseqnum = 0;
-    struct packet *pkt;
+    struct packet *pkt;         // packet pointer
 
     while (in_window(nextseqnum, w->base, w->width) &&
            more_packets(nextseqnum, w->base, lastseqnum)) {
+        // nextseqnum is inside the window and
+        // there are packets not sent yet
 
         pkt = pkts + nextseqnum;
 
         fprintf(stderr, "try to send packet %u\n", nextseqnum);
         send_packet(sockfd, pkt, loss);
 
-        /* set packet time */
+        /* set packet sendtime and exptime */
         pkt_settime(pkt, timeout);
 
         prio_enqueue(pkt, time_queue, pkt_exptimecmp);
@@ -896,12 +894,12 @@ void *send_service(void *p)
 
         condret = 0;
         while (e->type == NO_EVENT && condret != ETIMEDOUT) {
+            // no events and timeout not expired
 
-            /* check wich packet has expired and resend it */
-            resend_expired(sockfd, loss, &time_queue, &timeout, &w);
             /* calculate remaining time to wait */
             if (calc_wait_time(&time_queue, &wait_time) == -1) {
                 /* timeout expired: resend expired packets */
+                resend_expired(sockfd, loss, &time_queue, &timeout, &w);
                 fputs
                     ("timeout expired while calculating remaining time to timeout\n",
                      stderr);
@@ -914,9 +912,10 @@ void *send_service(void *p)
                 handle_error("pthread_cond_timedwait");
         }
 
-        /* Timeout */
+        /* TIMEOUT EVENT */
         if (condret == ETIMEDOUT) {
             fputs("TIMEOUT EVENT\n", stderr);
+            resend_expired(sockfd, loss, &time_queue, &timeout, &w);
             continue;
         }
 
@@ -924,27 +923,26 @@ void *send_service(void *p)
 
         case PKT_EVENT:
             fputs("PACKET EVENT\n", stderr);
-            empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
-            send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
-                         &time_queue, &timeout);
             break;
 
         case ACK_EVENT:
             fputs("ACK EVENT\n", stderr);
             acknum = e->acknum;
+            fprintf(stderr, "Received ACK %d\n", acknum);
             if (params->adaptive)
                 update_timeout(&timeout, pkts_buffer + acknum);
             fprint_timespec(stderr, &timeout);
             update_window(&w, acknum);
-            empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
-            send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
-                         &time_queue, &timeout);
             break;
 
         default:
             fputs("Unexpected event type\n", stderr);
             break;
         }
+
+        empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
+        send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
+                     &time_queue, &timeout);
     }
 
     if (pthread_mutex_unlock(&e->mtx) != 0)
@@ -957,8 +955,8 @@ void *send_service(void *p)
 /*
  * Function:	deliver_segment
  * ---------------------------------------------------------------
- * Put the segment on the shared circular buffer if there is enough
- * free space.
+ * Put the just arrived segment on the shared circular buffer if 
+ * there is enough free space.
  *
  * Parameters:
  * 		cb:		circular buffer address
@@ -1014,7 +1012,7 @@ bool is_duplicate(struct window *w, unsigned int rel_pos)
  * ------------------------------------------------------------------
  * Check if the received segment is into the receiving window, and mark it
  * as arrived, otherwise ignore the segment.
- * If the segment sequence number match the base of the window, deliver
+ * If the segment's sequence number match the base of the window, deliver
  * all the arrived segments with consicutive sequence number starting from
  * the base.
  *
@@ -1084,7 +1082,7 @@ bool process_segment(struct segment * sgt, struct segment * segments_cb,
  * ------------------------------------------
  * Loop routine that read the socket.
  * Check the size of the received data in order to recognize the content.
- * Denpendig on the contento either handle segment arrivals or
+ * Denpendig on the content, either handle segment arrivals or
  * signal ack arrivals to the sender routine.
  *
  * Parameters:
@@ -1123,7 +1121,7 @@ void *recv_service(void *p)
     timeout.tv_usec = 0;
     if (setsockopt
         (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1)
-        handle_error("setting socket timeout");
+        handle_error("recv_service - setting socket timeout");
 
 
     for (;;) {
@@ -1138,7 +1136,7 @@ void *recv_service(void *p)
 
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // timeout expired: close connection
-                fputs("Connection expired\n", stderr);
+                puts("Connection expired\n");
                 exit(EXIT_SUCCESS);
             }
 
@@ -1163,7 +1161,7 @@ void *recv_service(void *p)
 
 
         /* ACK received */
-        if (r == sizeof(uint8_t)) {
+        if (r == sizeof(acknum)) {
 
             acknum = (uint8_t) * buffer;
             //fprintf(stderr, "received ACK %u\n", acknum); 
@@ -1185,6 +1183,10 @@ void *recv_service(void *p)
  * ----------------------------------------------
  * Initialize shared structures and create sending and receiving
  * threads.
+ *
+ * Parameters:
+ * 		sockfd	connection socket descriptor
+ * 		params	protocol's parameters
  */
 void init_transport(int sockfd, struct proto_params *params)
 {
