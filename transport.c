@@ -385,121 +385,7 @@ struct packet *get_head_packet(struct queue_t *queue)
 
 
 
-/*
- * Function:	calc_rel_pos
- * -------------------------------------------------------
- * calculate the distance from the base of the window,
- * also consedering when the end of the window restart 
- * from the beginning of the circular buffer and the base
- * is still at the end.
- * The function not ensure if the seqnum index is out of
- * the window.
- *
- * Parameters:
- * 		seqnum:		the index of the packet seqnum
- * 		base:		the index of the windows's base
- *
- * Returns:
- * 		the distance from the base of the window
- */
-unsigned int calc_rel_pos(unsigned int seqnum, unsigned int base)
-{
-    if (seqnum < base)
-        return MAXSEQNUM + seqnum - base;
 
-    return seqnum - base;
-}
-
-
-
-/* Function: 	in_prewindow
- * -----------------------------------------------------
- * States if the position index is inside the interval [base - width; base),
- * also consedering when the base restart from the beginning 
- * of the circular buffer and the base - width index is still at the end.
- *
- * Parameters:
- * 		pos:	the position index
- *		base:	the base index of the window
- *		width:	the width of the window
- *
- *	Returns:
- *		true:	the position index is inside the interval 
- *		false:	otherwise
- */
-bool in_prewindow(unsigned int pos, unsigned int base, unsigned int width)
-{
-    unsigned int s;
-
-    s = base >= width ? base - width : MAXSEQNUM + base - width;
-
-    if (s < base)
-        return pos >= s && pos < base;  // p in [b - w; b)
-    else
-        return !(pos < s && pos >= base);   // p in [b - w; MAX] || p in [0 ; b)
-}
-
-
-
-
-/* Function: 	in_window
- * -----------------------------------------------------
- * States if the position index is inside the window [base ; base + width),
- * also consedering when the end of the window restart from the beginning 
- * of the circular buffer and the base is still at the end.
- *
- * Parameters:
- * 		pos:	the position index
- *		base:	the base index of the window
- *		width:	the width of the window
- *
- *	Returns:
- *		true:	the position index is inside the window
- *		false:	otherwise
- */
-bool in_window(unsigned int pos, unsigned int base, unsigned int width)
-{
-    unsigned int end = (base + width) % MAXSEQNUM;
-
-    if (base < end)
-        return pos >= base && pos < end;    // p in [b ; b + w)
-    else
-        return !(pos < base && pos >= end); // p in [b ; MAX] || p in [0 ; b + w)
-}
-
-
-
-
-/*
- * Function:	pkt_acked	
- * --------------------------------------------------------
- * check if the segment specified by seqnum is acked.
- *
- * Parameters:
- * 		w:		the window to check if the seqnum is valid
- * 		seqnum: index of the packet
- * 		
- * 	Returns:
- * 		true:	the packet is acked
- * 		false:	otherwise
- */
-bool pkt_acked(struct window * w, unsigned int seqnum)
-{
-    unsigned int i;
-    int acked;
-
-    if (in_window(seqnum, w->base, w->width)) {
-        /* calculate relative distance from the base of the window */
-        i = calc_rel_pos(seqnum, w->base);
-        acked = check_bit(&w->ack_bar, i);
-        if (acked == -1)
-            handle_error("check_bit()");
-    } else
-        /* base slid over the seqnum: pkt acked */
-        acked = 1;
-
-    return acked;
-}
 
 
 int pkt_exptimecmp(void *xp, void *yp)
@@ -640,7 +526,7 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
     static unsigned int nextseqnum = 0;
     struct packet *pkt;         // packet pointer
 
-    while (in_window(nextseqnum, w->base, w->width) &&
+    while (in_window(w, nextseqnum) &&
            more_packets(nextseqnum, w->base, lastseqnum)) {
         // nextseqnum is inside the window and
         // there are packets not sent yet
@@ -661,89 +547,6 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
 
     fprintf(stderr, "base = %u, nextseqnum = %u, lastseqnum = %u\n",
             w->base, nextseqnum, lastseqnum);
-}
-
-
-
-/*
- * Function:	calc_shift
- * ------------------------
- * Calculate the number of acked packets besides the first.
- * This number is the amount of digits to shift when the base packet arrives.
- *
- * Parameters:
- * 		w:	the window of transiting packets
- *
- * Returns:
- * 		the number of digits to shift
- */
-unsigned int calc_shift(struct window *w)
-{
-    unsigned int i;
-    int retval;
-
-    for (i = 1; i < w->width; i++) {
-        retval = check_bit(&w->ack_bar, i);
-        if (retval == -1)
-            handle_error("check_bit");
-        if (!retval)
-            break;
-    }
-    fprintf(stderr, "SHIFT = %u\n", i);
-    return i;
-}
-
-
-
-void fprint_window(FILE * stream, struct window *w)
-{
-    unsigned int i;
-    int retval;
-
-    for (i = 0; i < w->width; i++) {
-        retval = check_bit(&w->ack_bar, i);
-        if (retval == -1)
-            handle_error("check_bit");
-        if (retval)
-            fputc('1', stream);
-        else
-            fputc('0', stream);
-    }
-    fprintf(stream, "\nbase = %u\n", w->base);
-}
-
-
-/*
- * Function:	update_window
- * ------------------------------------------------
- *
- */
-void update_window(struct window *w, uint8_t acknum)
-{
-    unsigned int i, s;
-
-    if (acknum == w->base) {
-
-        /* shift ack bar to the first unmarked bit */
-        s = calc_shift(w);
-        if (shift(&w->ack_bar, s) == -1)
-            handle_error("shift()");
-
-        /* slide window */
-        w->base = (w->base + s) % MAXSEQNUM;
-        fprint_window(stderr, w);
-    }
-
-    else if (in_window(acknum, w->base, w->width)) {
-
-        /* calculate distance from window's base */
-        i = calc_rel_pos(acknum, w->base);
-        /* mark packet as acked */
-        if (set_bit(&w->ack_bar, i) == -1)
-            handle_error("set_bit()");
-
-        fprint_window(stderr, w);
-    }
 }
 
 
@@ -983,28 +786,6 @@ void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
 }
 
 
-/*
- * Function:	is_duplicate
- * -----------------------------------------------------
- * Check if the segment with relative seqnum rel_pos is a duplicate,
- * e.g. it is already arrived.
- *
- * Parameters:
- * 		w:			the window of the in-flight packets
- * 		rel_pos:	distance of the seqnum from the base of the window
- *
- * Returns:
- * 		true:	the segment is a duplicate
- * 		false:	otherwise
- */
-bool is_duplicate(struct window *w, unsigned int rel_pos)
-{
-    int duplicate = check_bit(&w->ack_bar, rel_pos);
-    if (duplicate == -1)
-        handle_error("check_bit()");
-    return duplicate;
-}
-
 
 
 /*
@@ -1027,8 +808,8 @@ bool is_duplicate(struct window *w, unsigned int rel_pos)
  *				and must send an ack to the sender
  *		false:	otherwise
  */
-bool process_segment(struct segment * sgt, struct segment * segments_cb,
-                     struct window * w, struct circular_buffer * cb)
+bool process_segment(struct segment *sgt, struct segment *segments_cb,
+                     struct window *w, struct circular_buffer *cb)
 {
     static unsigned int S = 0;
     unsigned int i, s, seqnum;
@@ -1036,10 +817,10 @@ bool process_segment(struct segment * sgt, struct segment * segments_cb,
     seqnum = sgt->seqnum;
     fprintf(stderr, "received segment %u\n", seqnum);
 
-    if (in_window(seqnum, w->base, w->width)) {
+    if (in_window(w, seqnum)) {
 
         /* calculate seqnum distance from the base of the window */
-        i = calc_rel_pos(seqnum, w->base);
+        i = distance(w, seqnum);
 
         /* check if the segment is a duplicate */
         if (is_duplicate(w, i)) {
@@ -1064,11 +845,11 @@ bool process_segment(struct segment * sgt, struct segment * segments_cb,
                 S = (S + 1) % w->width;
             }
             /* update window indexes */
-            shift(&w->ack_bar, s);
+            shift_window(w, s);
             w->base = (w->base + s) % MAXSEQNUM;
         }
         return true;
-    } else if (in_prewindow(seqnum, w->base, w->width)) {
+    } else if (in_prewindow(w, seqnum)) {
         //fputs("Already received\n", stderr);
         return true;
     }

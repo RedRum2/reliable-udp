@@ -18,6 +18,8 @@
 
 
 *.swap
+.*.swp
+.*.swo
 *~
 ign*
 

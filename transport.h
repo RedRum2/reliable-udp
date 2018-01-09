@@ -5,7 +5,7 @@
 #include "rw.h"
 #include "basic.h"
 #include "event.h"
-#include "bit_array.h"
+#include "window.h"
 #include "queue.h"
 
 #include <pthread.h>
@@ -30,12 +30,6 @@ struct packet {
 	struct timespec sendtime;
 	struct timespec exptime;
 	bool rtx;
-};
-
-struct window {
-	unsigned int base;
-	unsigned int width;
-	struct bit_array ack_bar;	// 128 bit array
 };
 
 struct circular_buffer {
