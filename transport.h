@@ -5,8 +5,6 @@
 #include "rw.h"
 #include "basic.h"
 #include "event.h"
-#include "window.h"
-#include "queue.h"
 
 #include <pthread.h>
 

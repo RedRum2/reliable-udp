@@ -1,0 +1,114 @@
+\subsubsection{Selective Repeat: ricevente}
+Il lato mittente del protocollo viene svolto soltanto dal 
+\emph{recv\_service}, che si occupa di gestire il riordino
+e la consegna a livello applicativo dei segmenti che giungono 
+dalla rete, ed eventualmente di inviare i riscontri al mittente.
+\begin{lstlisting}[title=transport.c]
+void *recv_service(void *p)
+{
+    .....
+
+    for (;;) {
+
+        r = read(sockfd, buffer, max_recvsize);
+
+        if (r == -1) {
+            // error ot timeout .....     
+        }
+
+        /* segment received */
+        if (r == sizeof(struct segment)) {
+
+            sgt = (struct segment *) buffer;
+            if (process_segment(
+                sgt, segments_cb, &recv_window, cb)) {
+                /* send ACK */
+                if (udt_send
+                    (tools->sockfd, &sgt->seqnum, sizeof(uint8_t),
+                     loss) == -1)
+                    handle_error("udt_send() - sending ACK");
+            }
+            continue;
+        }
+
+        /* ACK received */
+        if (r == sizeof(acknum)) {
+            // ACK work .....
+            continue;
+        }
+    }
+    .....
+}
+\end{lstlisting}
+Il thread, bloccato in lettura sulla socket, quando riceve un segmento
+chiama la funzione \emph{process\_segment} che
+\begin{lstlisting}[title=transport.c]
+bool process_segment(struct segment *sgt, struct segment *segments_cb,
+                     struct window *w, struct circular_buffer *cb)
+{
+    static unsigned int S = 0;
+    unsigned int i, s, seqnum;
+
+    seqnum = sgt->seqnum;
+    fprintf(stderr, "received segment %u\n", seqnum);
+
+    if (in_window(w, seqnum)) {
+
+        /* calculate seqnum distance from the base of the window */
+        i = distance(w, seqnum);
+
+        /* check if the segment is a duplicate */
+        if (is_duplicate(w, i)) {
+            //fputs("Already received\n", stderr);
+            return true;
+        }
+
+        /* store the segment */
+        segments_cb[(S + i) % w->width] = *sgt;
+
+        /* mark segment as arrived */
+        if (set_bit(&w->ack_bar, i) == -1)
+            handle_error("set_bit()");
+        fprint_window(stderr, w);
+
+        if (seqnum == w->base) {
+            /* calculate the number of consecutive segments */
+            s = calc_shift(w);
+            /* deliver consecutive segments */
+            for (i = 0; i < s; i++) {
+                deliver_segment(cb, segments_cb + S);
+                S = (S + 1) % w->width;
+            }
+            /* update window indexes */
+            shift_window(w, s);
+            w->base = (w->base + s) % MAXSEQNUM;
+        }
+        return true;
+    } else if (in_prewindow(w, seqnum)) {
+        //fputs("Already received\n", stderr);
+        return true;
+    }
+    return false;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[title=transport.c]
+void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
+{
+    if (pthread_mutex_lock(&cb->mtx) != 0)
+        handle_error("pthread_mutex_lock");
+
+    /* check free space */
+    while (space_available(cb->S, cb->E, CBUF_SIZE) <= MSS) 
+        if (pthread_cond_wait(&cb->cnd_not_full, &cb->mtx) != 0)
+            handle_error("pthread_cond_wait");
+
+    memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
+    cb->E = (cb->E + sgt->size) % CBUF_SIZE;
+
+    if (pthread_cond_signal(&cb->cnd_not_empty) != 0)
+        handle_error("pthread_cond_signal");
+    if (pthread_mutex_unlock(&cb->mtx) != 0)
+        handle_error("pthread_mutex_unlock");
+}
+\end{lstlisting}

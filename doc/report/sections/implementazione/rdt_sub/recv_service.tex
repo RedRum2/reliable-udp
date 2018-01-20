@@ -1,0 +1,43 @@
+\begin{lstlisting}[title=transport.c]
+void *recv_service(void *p)
+{
+	.....
+
+    for (;;) {
+
+        r = read(sockfd, buffer, max_recvsize);
+
+        if (r == -1) {
+            if (errno == EINTR)
+                // signal interruption
+                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // timeout expired: close connection
+                puts("Connection expired\n");
+                exit(EXIT_SUCCESS);
+            }
+            handle_error("recv_service - read()");
+        }
+
+        /* segment received */
+        if (r == sizeof(struct segment)) {
+
+            // segment work .....
+            
+            continue;
+        }
+
+        /* ACK received */
+        if (r == sizeof(acknum)) {
+
+            // ack work .....
+
+            continue;
+        }
+
+        fputs("recv_service: undefined data received\n", stderr);
+    }
+
+	.....
+}
+\end{lstlisting}

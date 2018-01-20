@@ -7,14 +7,13 @@ ssize_t udt_sendto(int sockfd, const void *buf, size_t len,
 				 const struct sockaddr *addr, socklen_t addrlen,
 				 double loss)
 {
-	double drand = randgen();
 	ssize_t retval = len;
 
 	// necessary flow control into a local network
 	if (loss < 0.1)
 		usleep(50);
 
-	if (drand > loss) 
+	if (randgen() > loss) 
 		retval = sendto(sockfd, buf, len, 0, addr, addrlen);
 
 	return retval;

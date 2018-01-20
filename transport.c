@@ -1,130 +1,21 @@
 #include "transport.h"
 #include "simul_udt.h"
+#include "window.h"
+#include "queue.h"
+#include "adaptive.h"
+#include "cb_utils.h"
 #include "timespec_utils.h"
 
 
 
-
+/* shared structures */
 struct circular_buffer recv_cb;
 struct circular_buffer send_cb;
 struct event e;
+
+/* threads args to keep alive */
 struct shared_tools recv_tools, send_tools;
 
-
-
-
-/*
- * Function:	memcpy_tocb	
- * ---------------------------
- * Copy data from a buffer to a circular buffer, calculates how 
- * many bytes can be copied before the end of the circular buffer and eventually 
- * split the copy. 
- *
- * Parameters:
- * 		dest_cb: 	destination circular buffer 
- * 		source:  	source buffer
- * 		n: 			the number of bytes to be copied 
- * 		begin:	 	the beginning index of free memory
- * 		size:	 	the size of the circular buffer
- *
- */
-void memcpy_tocb(void *dest_cb, const void *source, size_t n,
-                 unsigned int begin, size_t size)
-{
-    size_t left = size - begin;
-
-    if (n <= left)
-        // copy at once
-        memcpy(dest_cb + begin, source, n);
-    else {
-        // copy twice
-        memcpy(dest_cb + begin, source, left);
-        memcpy(dest_cb, source + left, n - left);
-    }
-}
-
-
-
-/*
- * Function:	memcpy_fromcb
- * ---------------------------
- * Copy data from a circular buffer to a buffer, calculates how 
- * many bytes can be copied before the end of the circular buffer and eventually 
- * split the copy. 
- *
- * Parameters:
- * 		dest_cb: 	destination buffer 
- * 		source:  	source circular buffer
- * 		n: 			the number of bytes to be copied 
- * 		begin:	 	the beginning index of data
- * 		size:	 	the size of the circular buffer
- *
- */
-void memcpy_fromcb(void *dest, const void *source_cb, size_t n,
-                   unsigned int begin, size_t size)
-{
-    size_t left = size - begin;
-
-    if (n <= left)
-        // copy at once
-        memcpy(dest, source_cb + begin, n);
-    else {
-        // copy twice
-        memcpy(dest, source_cb + begin, left);
-        memcpy(dest + left, source_cb, n - left);
-    }
-}
-
-
-
-/*
- * Function:	data_available	
- * ---------------------------
- * Calculates how many bytes of data are available in the circular buffer.
- *
- * Parameters:
- * 		s:	index of the buffer at wich data start
- * 		e:	index of the first empty element of the buffer
- *
- * Returns:
- * 		the number of significant bytes.
- */
-size_t data_available(unsigned int s, unsigned int e)
-{
-    size_t available;
-
-    if (s == e)
-        available = 0;
-
-    else {
-        if (s < e)
-            available = e - s;
-
-        else
-            available = CBUF_SIZE - s + e;
-    }
-
-    return available;
-}
-
-
-
-/*
- * Function:	space_available	
- * ---------------------------
- * Calculates how many bytes are free in the circular buffer.
- *
- * Parameters:
- * 		s:	index of the buffer at wich data start
- * 		e:	index of the first empty element of the buffer
- *
- * Returns:
- * 		the numeber of free bytes.
- */
-size_t space_available(unsigned int s, unsigned int e)
-{
-    return CBUF_SIZE - data_available(s, e);
-}
 
 
 
@@ -158,7 +49,8 @@ void rdt_send(const void *buf, size_t len)
             handle_error("pthread_mutex_lock");
 
         /* check available space */
-        while ((free = space_available(send_cb.S, send_cb.E)) <= MSS)
+        while ((free =
+                space_available(send_cb.S, send_cb.E, CBUF_SIZE)) <= MSS)
             if (pthread_cond_wait(&send_cb.cnd_not_full, &send_cb.mtx) !=
                 0)
                 handle_error("pthread_cond_wait");
@@ -180,6 +72,7 @@ void rdt_send(const void *buf, size_t len)
         left -= tosend;
     }
 }
+
 
 
 
@@ -210,7 +103,7 @@ void rdt_recv(void *buf, size_t len)
                 handle_error("pthread_cond_wait");
 
         /* circular buffer not empty */
-        data = data_available(recv_cb.S, recv_cb.E);
+        data = data_available(recv_cb.S, recv_cb.E, CBUF_SIZE);
         toread = data < left ? data : left;
         memcpy_fromcb(buf + len - left, recv_cb.buf, toread, recv_cb.S,
                       CBUF_SIZE);
@@ -225,6 +118,7 @@ void rdt_recv(void *buf, size_t len)
         left -= toread;
     }
 }
+
 
 
 
@@ -280,6 +174,20 @@ ssize_t rdt_read_string(char *buf, size_t maxlen)
 
 
 
+/*
+ * Function:	store_pkt
+ * ------------------------------------------------------------
+ * Store segment and all the related info into the 
+ * send_service's local buffer.
+ * Take the segment from the first position of the shared 
+ * circular buffer.
+ *
+ * Parameters
+ * 		base	the address of the local buffer
+ * 		seqnum	the segment's sequence number
+ * 		size	the size of the segment's payload
+ * 		cb		the address of the circular buffer
+ */
 void store_pkt(struct packet *base, uint8_t seqnum, size_t size,
                struct circular_buffer *cb)
 {
@@ -293,16 +201,6 @@ void store_pkt(struct packet *base, uint8_t seqnum, size_t size,
     pkt->rtx = false;
 }
 
-
-
-bool buffer_free(unsigned int base, unsigned int last)
-{
-    unsigned int limit;
-
-    // avoid base = last
-    limit = (last + 1) % MAXSEQNUM;
-    return limit != base;
-}
 
 
 
@@ -328,10 +226,11 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
     if (pthread_mutex_lock(&cb->mtx) != 0)
         handle_error("pthread_mutex_lock");
 
-    while (cb->S != cb->E && buffer_free(w->base, *last_seqnum)) {
-        // shared buffer not empty and local buffer not full
+    while (cb->S != cb->E && 
+			cbuf_free(w->base, *last_seqnum, MAXSEQNUM)) {
+        // shared buffer not empty and local buffer has free slots
 
-        data = data_available(cb->S, cb->E);
+        data = data_available(cb->S, cb->E, CBUF_SIZE);
         size = data < MSS ? data : MSS;
 
         /* store a new packet */
@@ -349,13 +248,54 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
 
 
 
-void fprint_packet(FILE * stream, void *p)
+
+
+
+
+
+
+
+
+
+/*
+ * Function:	fprint_pkt
+ * -------------------------------------
+ * Debug print function.
+ */
+void fprint_pkt(FILE * stream, void *p)
 {
     struct packet *pkt = p;
 
     fprintf(stream, "%u", pkt->sgt.seqnum);
     //fprintf(stream, "%lld.%.9ld", (long long) ts->tv_sec, ts->tv_nsec);
 }
+
+
+
+
+/*
+ * Function:	pkt_exptimecmp	
+ * -------------------------------------
+ * Compare the expiration time of two segments.
+ *
+ * Parameters:
+ * 		xp	the address of the first packet
+ * 		yp	the address of the second packet
+ *
+ * 	Returns:
+ * 		1
+ * 		0
+ * 		-1
+ */
+int pkt_exptimecmp(void *xp, void *yp)
+{
+    struct packet *x = xp;
+    struct packet *y = yp;
+
+    return timespec_cmp(&x->exptime, &y->exptime);
+}
+
+
 
 
 struct packet *dequeue_pkt(struct queue_t *queue)
@@ -371,37 +311,13 @@ struct packet *dequeue_pkt(struct queue_t *queue)
 }
 
 
-/*
- * Function:	get_head_packet
- * -----------------------------------------------------
- *  
- */
-struct packet *get_head_packet(struct queue_t *queue)
-{
-    struct node_t *node = queue->head;
-    struct packet *pkt = node->value;
-    return pkt;
-}
-
-
-
-
-
-
-int pkt_exptimecmp(void *xp, void *yp)
-{
-    struct packet *x = xp;
-    struct packet *y = yp;
-
-    return timespec_cmp(&x->exptime, &y->exptime);
-}
 
 
 /*
  * Function:	pkt_settime
- * --------------------------------------------------------
- * Register the time when the packet is send and the time when
- * the packet will expire.
+ * -----------------------------------------------------------
+ * Register the time when the segment is send and the time when
+ * his timeout will expire.
  *
  * Parameters:
  * 		pkt			packet info address
@@ -417,14 +333,6 @@ void pkt_settime(struct packet *pkt, struct timespec *timeout)
 
 
 
-void send_packet(int sockfd, struct packet *pkt, double loss)
-{
-    struct segment *sgt = &pkt->sgt;
-    if (udt_send(sockfd, sgt, sizeof(struct segment), loss) == -1)
-        handle_error("udt_send() - sending packet");
-}
-
-
 
 bool pkt_expired(struct packet *pkt)
 {
@@ -438,6 +346,45 @@ bool pkt_expired(struct packet *pkt)
     else
         return true;
 }
+
+
+
+
+/*
+ * Function:	get_head_packet
+ * -----------------------------------------------------
+ * Dequeue the packet from the timeout queue.
+ * 
+ * Parameters:
+ * 		queue	the address of the timout queue
+ */
+struct packet *get_head_packet(struct queue_t *queue)
+{
+    struct node_t *node = queue->head;
+    struct packet *pkt = node->value;
+    return pkt;
+}
+
+
+
+
+/*
+ * Function:	send_packet
+ * -----------------------------------------------------------
+ * Extract the segment from the packet and send it.
+ *
+ * Parameters:
+ * 		sockfd	the socket file descriptor
+ * 		pkt		the address of the packet
+ * 		loss	the loss probability
+ */
+void send_packet(int sockfd, struct packet *pkt, double loss)
+{
+    struct segment *sgt = &pkt->sgt;
+    if (udt_send(sockfd, sgt, sizeof(struct segment), loss) == -1)
+        handle_error("udt_send() - sending packet");
+}
+
 
 
 
@@ -469,7 +416,7 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
         /* packet expired */
 
         dequeue(time_queue);
-        //fprint_queue(stderr, time_queue, fprint_packet);
+        //fprint_queue(stderr, time_queue, fprint_pkt);
 
         /* check if packed has been acked */
         if (pkt_acked(w, pkt->sgt.seqnum))
@@ -483,9 +430,10 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
         pkt_settime(pkt, timeout);
 
         prio_enqueue(pkt, time_queue, pkt_exptimecmp);
-        //fprint_queue(stderr, time_queue, fprint_packet);
+        //fprint_queue(stderr, time_queue, fprint_pkt);
     }
 }
+
 
 
 
@@ -514,10 +462,24 @@ bool more_packets(unsigned int next, unsigned int base, unsigned int last)
 }
 
 
+
+
 /*
  * Function		send_packets
- * ------------------------------------------------------
+ * -------------------------------------------------------------------------------
+ * Send the segments stored in the local buffer, register their 
+ * send and expiration time and add them to the timeout queue.
+ * Do this as long as the index of the next segment to send is 
+ * inside the window and there are segments to send.
  *
+ * Parameters:
+ * 		sockfd		the socket file descriptor
+ * 		loss		the segment's loss probability
+ * 		pkts		the address of the local buffer containing the packets to send
+ * 		lastseqnum	the index of the last segment passed by application
+ * 		w			the address of the send window
+ * 		timequeue	the queue of the segments' expiration times 
+ * 		timeout		the timeout value
  */
 void send_packets(int sockfd, double loss, struct packet *pkts,
                   unsigned int lastseqnum, struct window *w,
@@ -540,7 +502,7 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
         pkt_settime(pkt, timeout);
 
         prio_enqueue(pkt, time_queue, pkt_exptimecmp);
-        //fprint_queue(stderr, time_queue, fprint_packet);
+        //fprint_queue(stderr, time_queue, fprint_pkt);
 
         nextseqnum = (nextseqnum + 1) % MAXSEQNUM;
     }
@@ -591,49 +553,6 @@ int calc_wait_time(struct queue_t *q, struct timespec *wait_time)
 
 
 
-long long calc_estimated_rtt(long long sample)
-{
-    static long long estimated = 1000000000;    // 1 second
-
-    /*  est = (1-alpha)*est + alpha*sample
-     *  alpha=1/8                           */
-    estimated = estimated * 0.875 + (sample >> 3);
-
-    return estimated;
-}
-
-
-
-long long calc_dev_rtt(long long sample, long long estimated)
-{
-    static long long dev = 0;
-    long long sample_dev;
-
-    /*  dev = (1-beta)*dev + beta*|sample-est|
-     *  beta = 1/4                              */
-    sample_dev = llabs(sample - estimated);
-    dev = dev * 0.75 + (sample_dev >> 2);
-
-    return dev;
-}
-
-
-
-void calc_timeout(struct timespec *timeout, struct timespec *elapsed)
-{
-    long long estimated_rtt, sample_rtt, dev_rtt, timeout_nsec;
-
-    sample_rtt = tstonsec(elapsed);
-
-    estimated_rtt = calc_estimated_rtt(sample_rtt);
-    dev_rtt = calc_dev_rtt(sample_rtt, estimated_rtt);
-
-    timeout_nsec = estimated_rtt + 4 * dev_rtt;
-
-    nsectots(timeout, timeout_nsec);
-}
-
-
 
 void update_timeout(struct timespec *timeout, struct packet *pkt)
 {
@@ -649,7 +568,7 @@ void update_timeout(struct timespec *timeout, struct packet *pkt)
     if (timespec_sub(&elapsed, &now, &pkt->sendtime) == -1)
         handle_error("calculating elapsed time");
 
-    calc_timeout(timeout, &elapsed);
+    adapt_timeout(timeout, &elapsed);
 }
 
 
@@ -743,7 +662,9 @@ void *send_service(void *p)
             break;
         }
 
+        /* empty shared buffer and put segments into the local one */
         empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
+        /* send available segments */
         send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
                      &time_queue, &timeout);
     }
@@ -753,6 +674,8 @@ void *send_service(void *p)
 
     return NULL;
 }
+
+
 
 
 /*
@@ -771,16 +694,15 @@ void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
         handle_error("pthread_mutex_lock");
 
     /* check free space */
-    while (space_available(cb->S, cb->E) <= MSS)
+    while (space_available(cb->S, cb->E, CBUF_SIZE) <= MSS)
         if (pthread_cond_wait(&cb->cnd_not_full, &cb->mtx) != 0)
             handle_error("pthread_cond_wait");
 
-    memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
-    cb->E = (cb->E + sgt->size) % CBUF_SIZE;
+	memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
+	cb->E = (cb->E + sgt->size) % CBUF_SIZE;
 
     if (pthread_cond_signal(&cb->cnd_not_empty) != 0)
         handle_error("pthread_cond_signal");
-
     if (pthread_mutex_unlock(&cb->mtx) != 0)
         handle_error("pthread_mutex_unlock");
 }
@@ -840,10 +762,10 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
             /* calculate the number of consecutive arrived segments */
             s = calc_shift(w);
             /* deliver consecutive arrived segments */
-            for (i = 0; i < s; i++) {
-                deliver_segment(cb, segments_cb + S);
-                S = (S + 1) % w->width;
-            }
+			for (i = 0; i < s; i++) {
+				deliver_segment(cb, segments_cb + S);
+				S = (S + 1) % w->width;
+			}
             /* update window indexes */
             shift_window(w, s);
             w->base = (w->base + s) % MAXSEQNUM;
@@ -855,6 +777,7 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
     }
     return false;
 }
+
 
 
 
@@ -959,6 +882,8 @@ void *recv_service(void *p)
 }
 
 
+
+
 /*
  * Function:	init_transport
  * ----------------------------------------------
@@ -1026,5 +951,4 @@ void init_transport(int sockfd, struct proto_params *params)
 
     if (pthread_create(&t, NULL, send_service, &send_tools) != 0)
         handle_error("creating send_service");
-
 }

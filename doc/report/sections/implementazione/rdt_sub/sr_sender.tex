@@ -1,0 +1,427 @@
+\subsubsection{Selective Repeat: mittente}
+Il lato mittente del protocollo viene svolto principalmente dal 
+\emph{send\_service} e in parte anche dal \emph{recv\_service}.
+
+Quando il lato applicativo intende inviare un messaggio, richiama la funzione
+\emph{rdt\_send} passando dati e relativa quantità in byte come argomenti.\\
+La funzione controlla lo spazio disponibile sul buffer circolare condiviso
+e immette un quantità di dati (in byte) possibilmente pari ad un multiplo di 
+MSS, per consentire al servizio di invio di creare segmenti completamente pieni 
+di dati significativi (size = MSS). Se non sono disponibili almeno MSS byte 
+aspetta fintanto che non si libera lo spazio necessario.\\
+Essendo, il buffer circolare, una risorsa condivisa tra thread principale e 
+thread di invio, è stato necessario implementare dei meccanismi di 
+sincronizzazione.
+A tale scopo l'accesso esclusivo al buffer viene garantito da un mutex,
+mentre, per quanto riguarda l'attesa per la disponibilità di spazio, il thread
+principale attende su una variabile condizione che viene opportunamente segnalata
+quando il servizio di invio svuota il buffer, a sua volta il thread principale
+segnala la condizione al thread di invio che nel buffer sono presenti dati dopo
+l'immissione degli stessi.
+
+\begin{lstlisting}[title=trasport.h]
+struct circular_buffer {
+    pthread_mutex_t mtx;
+    pthread_cond_t cnd_not_empty;
+    pthread_cond_t cnd_not_full;
+    unsigned int S;
+    unsigned int E;
+    char buf[CBUF_SIZE];
+};
+\end{lstlisting}
+\begin{lstlisting}[title=trasport.c]
+void rdt_send(const void *buf, size_t len)
+{
+    size_t free, tosend, left = len;
+
+    while (left) {
+
+        if (pthread_mutex_lock(&send_cb.mtx) != 0)
+            handle_error("pthread_mutex_lock");
+
+        /* check available space */
+        while ((free =
+                space_available(send_cb.S, send_cb.E, CBUF_SIZE))
+				<= MSS)
+            if (pthread_cond_wait(&send_cb.cnd_not_full, 
+				&send_cb.mtx) != 0)
+                handle_error("pthread_cond_wait");
+
+        /* calculate how much data to send */
+        tosend =  free > left ?	left : free / MSS * MSS;
+
+        memcpy_tocb(send_cb.buf, buf + len - left, tosend, 
+					send_cb.E, CBUF_SIZE);
+
+        send_cb.E = (send_cb.E + tosend) % CBUF_SIZE;
+
+        if (pthread_mutex_unlock(&send_cb.mtx) != 0)
+            handle_error("pthread_mutex_unlock");
+
+        if (cond_event_signal(&e, PKT_EVENT) == -1)
+            handle_error("cond_event_signal()");
+
+        left -= tosend;
+    }
+}
+\end{lstlisting}
+
+Segnalata la presenza di dati sul buffer condiviso, il servizio di invio,
+appena può, richiama la funzioni \emph{empty\_buffer} e \emph{send\_packets}.
+
+\begin{lstlisting}[title=transport.c]
+	.....
+
+switch (e->type) {
+
+case PKT_EVENT:
+
+	/* empty shared buffer and put segments into the local one */
+	empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
+	/* send available segments */
+	send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
+				 &time_queue, &timeout);
+
+	break;
+
+case ACK_EVENT:
+    // ack work .....
+	break;
+
+default:
+	fputs("Unexpected event type\n", stderr);
+	break;
+}
+	.....
+
+\end{lstlisting}
+
+La funzione \emph{empty\_buffer} ha il compito di svuotare il buffer condiviso,
+creare i segmenti ed immagazzinarli nel buffer locale, in cui vi rimarranno
+(saranno validi) fino a quando non sarà tornato indietro l'ack relativo e 
+tutti quelli dei segmenti con numero di sequenza precedente.
+
+\begin{lstlisting}[title=transport.c]
+void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
+                  struct window *w, unsigned int *last_seqnum)
+{
+    size_t data, size;
+
+    if (pthread_mutex_lock(&cb->mtx) != 0)
+        handle_error("pthread_mutex_lock");
+
+    while (cb->S != cb->E && 
+           cbuf_free(w->base, *last_seqnum, MAXSEQNUM)) {
+        // shared buffer not empty and local buffer has free slots
+
+        data = data_available(cb->S, cb->E, CBUF_SIZE);
+        size = data < MSS ? data : MSS;
+
+        /* store a new packet */
+        store_pkt(pkts, *last_seqnum, size, cb);
+        *last_seqnum = (*last_seqnum + 1) % MAXSEQNUM;
+        cb->S = (cb->S + size) % CBUF_SIZE;
+
+        if (pthread_cond_signal(&cb->cnd_not_full) != 0)
+            handle_error("pthread_cond_signal");
+    }
+
+    if (pthread_mutex_unlock(&cb->mtx) != 0)
+        handle_error("pthread_mutex_unlock");
+}
+\end{lstlisting}
+La funzione, fintanto che sono presenti dati sul buffer condiviso e ci sono 
+slot liberi in quello locale, estrae al più MSS byte per poi creare un segmento,
+che verrà posizionato in uno slot del buffer locale tramite la 
+funzione \emph{store\_pkt}.\\
+Ogni volta che un segmento viene estratto ed inserito nella rete viene anche 
+aggiornato l'indice \emph{last\_seqnum} che indica il numero di sequenza del
+prossimo pacchetto che verrà immagazzinato e quindi corrisponde al primo slot
+libero del buffer locale.
+\begin{lstlisting}[title=transport.c]
+void store_pkt(struct packet *base, uint8_t seqnum, size_t size,
+               struct circular_buffer *cb)
+{
+    struct packet *pkt = base + seqnum;
+    struct segment *sgt = &(pkt->sgt);
+
+    sgt->seqnum = seqnum;
+    sgt->size = size;
+    memcpy_fromcb(sgt->payload, cb->buf, size, cb->S, CBUF_SIZE);
+
+    pkt->rtx = false;
+}
+\end{lstlisting}
+
+La funzione \emph{send\_packets} si occupa di inviare i segmenti presenti nel
+buffer locale fino a che l'indice nextseqnum, non superi il limite stabilito
+dall'ampiezza della finestra di invio.
+\begin{lstlisting}[title=transport.c]
+void send_packets(int sockfd, double loss, struct packet *pkts,
+                  unsigned int lastseqnum, struct window *w,
+                  struct queue_t *time_queue, 
+				  struct timespec *timeout)
+{
+    static unsigned int nextseqnum = 0;
+    struct packet *pkt;         // packet pointer
+
+    while (in_window(w, nextseqnum) &&
+           more_packets(nextseqnum, w->base, lastseqnum)) {
+        // nextseqnum is inside the window and
+        // there are packets not sent yet
+
+        pkt = pkts + nextseqnum;
+        send_packet(sockfd, pkt, loss);
+
+        /* set packet sendtime and exptime */
+        pkt_settime(pkt, timeout);
+
+        prio_enqueue(pkt, time_queue, pkt_exptimecmp);
+        nextseqnum = (nextseqnum + 1) % MAXSEQNUM;
+    }
+}
+\end{lstlisting}
+Quando un segmento viene inviato vengono registrati il tempo di invio e di
+scadenza, inoltre un riferimento al pacchetto viene inserito nella coda 
+per la gestione del timeout.\\
+Una volta che almeno un segmento è stato inviato, entra in gioco il 
+\emph{recv\_service} che, bloccato in lettura sulla socket, attende l'arrivo
+degli ack.\\
+Quando ne giunge uno, appena possibile lo segnala al \emph{send\_service} 
+inserendo il numero di sequenza nella variabile \emph{acknum} della
+struttura condivisa \emph{event}.
+\begin{lstlisting}[title=transport.c]
+.....
+
+for (;;) {
+
+	r = read(sockfd, buffer, max_recvsize);
+
+	.....
+
+	/* segment received */
+	if (r == sizeof(struct segment)) {
+		// segment work .....
+		continue;
+	}
+
+	/* ACK received */
+	if (r == sizeof(acknum)) {
+		acknum = (uint8_t) * buffer;
+		if (cond_ack_event_signal(e, acknum) == -1)
+			handle_error("cond_event_signal()");
+		continue;
+	}
+
+.....
+\end{lstlisting}
+
+Alla ricezione del segnale di ack il servizio di invio aggiorna il valore 
+del timeout e la finestra eventualmente facendola scorrere se il numero
+di sequenza è relativo alla base della finestra stessa.
+
+\begin{lstlisting}[title=transport.c]
+switch (e->type) {
+
+    case PKT_EVENT:
+        // pkt work .....
+        break;
+
+    case ACK_EVENT:
+        acknum = e->acknum;
+        if (params->adaptive)
+            update_timeout(&timeout, pkts_buffer + acknum);
+        update_window(&w, acknum);
+        empty_buffer(cb, pkts_buffer, &w, &lastseqnum);
+        send_packets(sockfd, loss, pkts_buffer, lastseqnum, &w,
+                     &time_queue, &timeout);
+        break;
+
+    default:
+        fputs("Unexpected event type\n", stderr);
+        break;
+    }
+}
+\end{lstlisting}
+Il valore del timeout viene aggiornato soltanto quando arrivano ack relativi
+a segmenti che non hanno subito ritrasmissioni.\\
+La funzione \emph{adapt\_timeout} aggiorna il timeout in base a quanto tempo
+è trascorso dall'invio del segmento fino alla ricezione dell'ack, come
+descritto nel libro di testo [riferimento], secondo la formula [formula]
+\begin{lstlisting}[title=transport.c]
+void update_timeout(struct timespec *timeout, struct packet *pkt)
+{
+    struct timespec now, elapsed;
+
+    /* check if packet was retransmitted */
+    if (pkt->rtx)
+        return;
+
+    if (clock_gettime(CLOCK_REALTIME, &now) == -1)
+        handle_error("ack timestamp");
+
+    if (timespec_sub(&elapsed, &now, &pkt->sendtime) == -1)
+        handle_error("calculating elapsed time");
+
+    adapt_timeout(timeout, &elapsed);
+}
+\end{lstlisting}
+\begin{lstlisting}[title=window.c]
+void update_window(struct window *w, uint8_t acknum)
+{
+    unsigned int i, s;
+
+    if (acknum == w->base) {
+
+        /* shift ack bar to the first unmarked bit */
+        s = calc_shift(w);
+        if (shift(&w->ack_bar, s) == -1)
+            handle_error("shift()");
+
+        /* slide window */
+        w->base = (w->base + s) % MAXSEQNUM;
+        fprint_window(stderr, w);
+    }
+
+    else if (in_window(w, acknum)) {
+
+        /* calculate distance from window's base */
+        i = distance(w, acknum);
+        /* mark packet as acked */
+        if (set_bit(&w->ack_bar, i) == -1)
+            handle_error("set_bit()");
+
+        fprint_window(stderr, w);
+    }
+}
+\end{lstlisting}
+Infine, se c'è stato uno scorrimento della finestra di invio, si libererà
+dello spazio sul buffer circolare e sarà possibile 
+inviare i segmenti successivi, pertanto vengono richiamate le funzioni
+\emph{empty\_buffer} e \emph{send\_packets} già descritte in precedenza.
+
+L'ultimo evento a cui il mittente deve reagire riguarda la scadenza del 
+timeout di un segmento.\\
+Ciò avviene quando la \emph{pthread\_cond\_timedwait} restituisce la 
+costante ETIMEDOUT come valore di ritorno, in tal caso viene chiamata
+la funzione \emph{resend\_expired} che determina quali pacchetti sono 
+scaduti e li ritrasmette.
+\begin{lstlisting}[title=window.c]
+for (;;) {
+
+    .....
+
+	condret = 0;
+	while (e->type == NO_EVENT && condret != ETIMEDOUT) {
+		// no events and timeout not expired
+
+		/* calculate remaining time to wait */
+		if (calc_wait_time(&time_queue, &wait_time) == -1) {
+			/* timeout expired: resend expired packets */
+			resend_expired(sockfd, loss, &time_queue, &timeout, &w);
+			continue;
+		}
+
+		condret = pthread_cond_timedwait(&e->cnd_event, &e->mtx,
+                                         &wait_time);
+		if (condret != 0 && condret != ETIMEDOUT)
+			handle_error("pthread_cond_timedwait");
+	}
+
+
+	/* TIMEOUT EVENT */
+	if (condret == ETIMEDOUT) {
+		resend_expired(sockfd, loss, &time_queue, &timeout, &w);
+		continue;
+	}
+
+    .....
+}
+\end{lstlisting}
+Nello specifico la funzione per la ritrasmissione estrae segmenti fintanto
+che non ne trova uno che non sia scaduto, per ognuno di essi si controlla 
+se non è stato già ricevuto e in tal caso il segmento viene inviato di
+nuovo, marcato come ritrasmesso e vengono aggiornati i tempi di invio e di
+scadenza, infine viene di reinserito nella coda.
+\begin{lstlisting}[title=transport.c]
+void resend_expired(int sockfd, double loss, 
+                    struct queue_t *time_queue,
+                    struct timespec *timeout, struct window *w)
+{
+    struct packet *pkt;
+
+    while (time_queue->head != NULL) {
+
+        /* fetch first to expire packet */
+        pkt = get_head_packet(time_queue);
+
+        if (!pkt_expired(pkt))
+            break;
+
+        dequeue(time_queue);
+
+        /* check if packed has been acked */
+        if (pkt_acked(w, pkt->sgt.seqnum))
+            continue;
+
+        send_packet(sockfd, pkt, loss);
+        pkt->rtx = true;
+
+        /* set packet time */
+        pkt_settime(pkt, timeout);
+
+        prio_enqueue(pkt, time_queue, pkt_exptimecmp);
+    }
+}
+\end{lstlisting}
+Un'operazione che può sembrare superflua è qualla relativa al controllo sulla 
+ricezione del segmento, questo passaggio è necessario poiché quando si 
+riceve un ack, non viene rimosso il nodo del relativo segmento, perché 
+altrimenti si dovrebbe effettuare una ricerca nella coda del nodo da rimuovere
+e questo costerebbe $\mathcal{O}(N)$ in termini di prestazioni, pertanto si è 
+scelto di rimuovere il nodo nel momento in cui la coda viene scansionata per 
+il controllo delle scadenze.\\
+Tuttavia questa scelta, in particolari condizioni, potrebbe provocare una
+situazione spiacevole.
+Infatti se la probabilità di perdita è molto bassa ($ <10\%$) e la finestra 
+di invio scorre troppo velocemente prima che i nodi relativi a pacchetti già 
+riscontrati vengano rimossi, è possibile che i nl
+
+Poiché ciò avviene solo in condizioni particolari, si è scelto di mantenere
+l'implementazione con le rimozioni dei nodi ritardate, in modo da favorire le
+prestazioni.
+
+La funzione \emph{pthread\_cond\_timedwait} attende il verificarsi degli 
+eventi di ricezione di dati dal livello superiore oppure di ricezione di
+un ack, per un tempo calcolato ad ogni ciclo tramite la funzione
+\emph{calc\_wait\_time} che imposta il tempo di attesa in base a quanto 
+ne rimane alla scadenza del timeout del primo segmento.\\
+Se la coda non contiene nodi, il timeout viene impostato ad un valore
+molto elevato per fare in modo che il thread non venga svegliato 
+inutilmente.
+\begin{lstlisting}[title=transport.c]
+int calc_wait_time(struct queue_t *q, struct timespec *wait_time)
+{
+    struct packet *pkt;
+    struct timespec now, left;
+
+    if (clock_gettime(CLOCK_REALTIME, &now) == -1)
+        handle_error("clock_gettime()");
+
+    if (!q->head) {
+        /* queue is empty: turn off the timeout */
+        left.tv_sec = 15;
+        left.tv_nsec = 0;
+    } else {
+        pkt = get_head_packet(q);
+
+        /* calculate remaining time to timeout */
+        if (timespec_sub(&left, &pkt->exptime, &now) == -1)
+            /* now > exptime: timeout expired */
+            return -1;
+    }
+
+    timespec_add(wait_time, &now, &left);
+    return 0;
+}
+\end{lstlisting}

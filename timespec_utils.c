@@ -3,11 +3,13 @@
 #include <errno.h>
 
 
+
 int timespec_cmp(struct timespec *x, struct timespec *y)
 {
     return (x->tv_sec < y->tv_sec ? -1
             : x->tv_sec > y->tv_sec ? 1 : (int) (x->tv_nsec - y->tv_nsec));
 }
+
 
 
 int timespec_sub(struct timespec *result, struct timespec *x,
@@ -33,6 +35,7 @@ int timespec_sub(struct timespec *result, struct timespec *x,
 }
 
 
+
 void timespec_add(struct timespec *result, struct timespec *x,
                   struct timespec *y)
 {
@@ -44,6 +47,7 @@ void timespec_add(struct timespec *result, struct timespec *x,
     result->tv_nsec = nsum % 1000000000;
     result->tv_sec = x->tv_sec + y->tv_sec + carry;
 }
+
 
 
 void fprint_timespec(FILE * stream, struct timespec *ts)

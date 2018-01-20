@@ -1,12 +1,23 @@
 \subsubsection{Struttura}
-Lo strato di trasporto virtuale è visto dall'esterno come una black box che prende in ingresso messaggi dal livello applicativo, e restituisce i messaggi di risposta dell'host interlocutore.\\
-Nello specifico un messaggio viene frammentato in segmenti di una misura massima prefissata (MSS), i quali poi vengono inviati e gestiti tramite l'algoritmo di trasferimento affidabile, in questo modo vi è la garanzia che un segmento non venga ulteriormente suddiviso a livello di collegamento.\\
-La dimensione massima del segmento è stata calcolata considerando un MTU relativo ad un collegamento Ethernet standard di 1500 byte, un header UDP/IP di 28 byte ed un header contente i parametri necessari all'esecuzione dell'algoritmo siffatto: il numero di sequenza del segmento pari ad 1 byte e la quantità di byte significativi nel payload pari a 2 byte.
+Lo strato di trasporto virtuale è visto dall'esterno come una black box che 
+prende in ingresso messaggi dal livello applicativo, e restituisce i messaggi
+di risposta dell'host interlocutore.\\
+Nello specifico un messaggio viene frammentato in segmenti di una misura 
+massima prefissata (MSS), i quali poi vengono inviati e gestiti tramite 
+l'algoritmo di trasferimento affidabile, in questo modo vi è la garanzia che 
+un segmento non venga ulteriormente suddiviso a livello di collegamento.\\
+La dimensione massima del segmento è stata calcolata considerando un MTU 
+relativo ad un collegamento Ethernet standard di 1500 byte, un header UDP/IP
+di 28 byte ed un header contente i parametri necessari all'esecuzione 
+dell'algoritmo: il numero di sequenza del segmento pari ad 1 byte e la 
+quantità di byte significativi nel payload pari a 2 byte.
+Il numeri di sequenza sono contenuti in variaili da 8 bit, pertanto vanno 
+da $0$ a MAXSEQNUM - 1, con MAXSEQNUM = $2^8$.
 
 %MSS = MTU - UDP/IP - SR
-
 \begin{lstlisting}[title=transport.h]
 
+#define MAXSEQNUM       (1 << 8)
 #define MTU             1500
 #define UDPIP_HEADER    28
 #define SR_HEADER       (sizeof(uint8_t) + sizeof(uint16_t))
@@ -21,22 +32,39 @@ struct segment {
 };
 \end{lstlisting}
 
-Il livello di trasporto è composto principalmente da due servizi indipendenti, uno che uno che interpreta il ruolo di mittente del protocollo, l'altro di destinatario.//
-Entrambi vengono implementati tramite thread, affinché sia possibile che un host invii segmenti e riceva ACK contemporaneamente.//
-L'operazione di creazione di questi thread, sia lato mittente che destinatario (con gli stessi parametri), equivale all'instaurazione della connessione,
-e viene eseguita dalla funzione \emph[init\_transport].
+Il livello di trasporto virtuale è composto principalmente da due servizi 
+indipendenti:
+\begin{itemize}
+\item \textbf{send\_service}: servizio che si occupa dell'invio dei segmenti e
+della gestione di gran parte del protocollo lato mittente.
+\item \textbf{recv\_service}: servizio che si occupa principalmente della
+ricezione di ack e segmenti, pertanto interpreta il lato destinatario del 
+protocollo e collabora con il lato mittente.
+\end{itemize}
+Entrambi vengono implementati tramite thread, per renderli indipendenti dal 
+thread principale ``applicativo'' e affinché sia possibile che un host invii 
+segmenti e riceva ACK contemporaneamente.\\
+L'operazione di creazione di questi thread, sia lato mittente che destinatario
+(con gli stessi parametri), equivale all'instaurazione della connessione,
+e viene eseguita dalla funzione \emph{init\_transport}.
 
-\begin{lstlisting}[transport.c]
+\begin{lstlisting}[title=transport.c]
+/* shared structures */
+struct circular_buffer recv_cb;
+struct circular_buffer send_cb;
+struct event e;
+/* threads args to keep alive */
+struct shared_tools recv_tools, send_tools;
+
+
 void init_transport(int sockfd, struct proto_params *params)
 {
     pthread_t t;
-
 
     /* initialize circular buffers */
 
     recv_cb.E = recv_cb.S = 0;
     send_cb.E = send_cb.S = 0;
-
 
     /* initialize shared tools */
 
@@ -48,7 +76,6 @@ void init_transport(int sockfd, struct proto_params *params)
     send_tools = recv_tools;
     send_tools.cb = &send_cb;
 
-
     /* initialize mutexes */
 
     if (pthread_mutex_init(&e.mtx, NULL) != 0)
@@ -57,7 +84,6 @@ void init_transport(int sockfd, struct proto_params *params)
         handle_error("pthread_mutex_init()");
     if (pthread_mutex_init(&send_cb.mtx, NULL) != 0)
         handle_error("pthread_mutex_init()");
-
 
     /* initialize conditions */
 
@@ -76,7 +102,6 @@ void init_transport(int sockfd, struct proto_params *params)
     if (pthread_cond_init(&e.cnd_no_event, NULL) != 0)
         handle_error("pthread_cond_init()");
 
-
     /* create threads */
 
     if (pthread_create(&t, NULL, recv_service, &recv_tools) != 0)
@@ -84,6 +109,109 @@ void init_transport(int sockfd, struct proto_params *params)
 
     if (pthread_create(&t, NULL, send_service, &send_tools) != 0)
         handle_error("creating send_service");
-
 }
 \end{lstlisting}
+
+Il servizio di invio è stato implementato come un thread che rimane in attesa
+fintanto che non avviene uno dei seguenti eventi:
+\begin{itemize}
+\item[-]Ricezione dati dal livello applicativo;
+\item[-]Ricezione di un aknowledgment dalla rete;
+\item[-]Scadenza di un timeout relativo ad un segmento inviato.
+\end{itemize}
+
+\input{sections/implementazione/rdt_sub/send_service}
+
+Il servizio di ricezione invece risponde ai seguenti eventi:
+\begin{itemize}
+\item[-]Ricezione di dati dalla rete (segmenti o ack);
+\item[-]Scadenza di un timeout relativo alla connessione.
+\end{itemize}
+In caso di ricezione di dati dalla rete, segmenti e ack vengono distinti in 
+base alla loro dimensione, invece il timeout è implementato impostandolo
+sulla socket in lettura.
+\input{sections/implementazione/rdt_sub/recv_service}
+
+Le funzioni \emph{rdt\_send} e \emph{rdt\_recv} fungono da regolatori del flusso
+di dati dal livello applicativo puro a quello di trasporto virtuale e 
+viceversa.\\
+Queste funzioni comunicano con i thread di invio e ricezione tramite 
+dei buffer condivisi secondo uno schema del tipo produttore-consumatore, in 
+modo tale che i dati effettuino il passaggio di livello solo quando c'è spazio
+disponibile sui buffer.
+
+\includegraphics[scale=0.35]{images/structure_1}
+
+Prima di passare a come viene implementato il \emph{selective repeat}, è 
+necessario introdurre le strutture principale che ne supportano il 
+funzionamento.\\
+Come già detto, le unità di base con cui l'algoritmo ha a che fare sono
+i segmenti che contengono i dati applicativi. Poiché tali segmenti sono
+soggetti a ritrasmissioni, è necessario che vengano ``immagazzinati'' da 
+qualche parte, inoltre, per quanto riguarda il lato destinatario, vanno
+consegnati al livello applicativo in ordine, per queste ragioni, sia il 
+servizio di invio che il servizio di ricezione sono dotati di buffer locali.\\
+Tali buffer sono implementati tramite array di dimensione fissa e hanno una
+capacità pari a MAXSEQNUM slot, in modo tale da far
+corrispondere gli indici ai numeri di sequenza dei segmenti e 
+garantirne un accesso immediato ($\mathcal{O}(1)$). Inoltre i buffer vengono
+trattati come circolari, così da emulare naturalmente il riciclo dei numeri 
+di sequenza.\\
+Mentre il buffer del \emph{recv\_service} è implementato tramite un'array di 
+strutture \emph{segment}, quello del \emph{send\_service} è un'array di 
+strutture \emph{packet}, ovvero contenitori di segmenti e informazioni ad essi
+relative necessarie al funzionamento del timeout, come istante di invio, quello
+di scadenza ed un booleano che indica se il pacchetto è stato ritrasmesso.
+
+\begin{lstlisting}[title=transport.h]
+struct packet {
+	struct segment sgt;
+	struct timespec sendtime;
+	struct timespec exptime;
+	bool rtx;
+};
+\end{lstlisting}
+
+Un'altra struttura fondamentale per l'algoritmo è la \emph{window}, che 
+rappresenta le finestre di spedizione o ricezione delle due parti 
+coinvolte.
+\begin{lstlisting}[title=window.h]
+struct window {
+	unsigned int base;
+	unsigned int width;
+	struct bit_array ack_bar;	// 128 bit array
+};
+\end{lstlisting}
+Tale struttura è composta da un'indice \emph{base} che rappresenta la base
+della finestra, un intero \emph{width} che indica l'ampiezza massima della
+finestra ed infine una struttura \emph{bit\_array} che non è altro che una
+bitmask che tiene conto di quali segmenti sono arrivati a destinazione a 
+partire dalla base della finestra.
+
+[Disegno esempio bitmask] 
+
+Infine, vi è la struttura necessaria alla gestione del timeout dei segmenti
+inviati: una coda priotritaria i cui nodi sono puntatori
+ai pacchetti presenti nel buffer locale di invio.\\
+Ogni nodo è ordinato in base alla scadenza del timeout e una scansione 
+periodica determina quali segmenti vanno ritrasmessi, appena si trova un 
+segmento non scaduto non è necessario controllare i successivi
+nella coda.
+Questo meccanismo permette di gestire più timeot logici avendo un solo 
+contatore hardware a disposizione.\\
+In termini di prestazioni, avendo già N nodi nella coda, 
+l'inserimento di un nuovo nodo richiede il confronto con tutti i
+nodi che scadono prima, questo si effettua al più con un numero di passi
+pari al numero di nodi presenti ($\mathcal{O}(N)$)
+nel caso di timeout adattativo, invece se il timeout è costante non vi è bisogno
+di alcun confronto poiché l'ultimo nodo inviato sarà l'ultimo a scadere e 
+verrà semplicemente accodato (tempo $\mathcal{O}(1)$).
+Per quanto riguarda l'estrazione del primo nodo da ritrasmettere, grazie 
+all'inserimento prioritario, non è richiesta nessuna scansione, poiché il nodo 
+in testa sarà il primo a scadere.\\
+La coda è stata implementata in maniera tale da occupare meno memoria possibile,
+infatti i nodi sono composti dagli indirizzi delle strutture \emph{packet}
+presenti nel buffer locale, la coda tiene conto solo del loro ordinamento.
+
+[disegno time\_queue]
+

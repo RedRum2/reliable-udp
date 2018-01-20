@@ -1,11 +1,10 @@
 \subsection{Connessione}
 La comunicazione tra client e server avviene a seguito dell'instaurazione di una connessione senza autenticazione.\\
-Il client quando vuole connettersi al server invia un messaggio di SYN, dopodiché si mette in attesa di un messaggio di risposta (SYNACK) contenente i parametri necessari alla creazione delle strutture che gestiscono la communicazione affidabile. Questa attesa è limitata dalla presenza di un timer di 5 secondi, allo scadere del quale avviene un nuovo tentativo di connessione reinviando il messaggio di SYN.\\
-Ricevuto il messaggio di risposta vengono create ed inizializzate le strutture di comunicazione e la connessione risulta instaurata, da questo istante è possibile inviare comandi al server in modo affidabile.\\
+Il client quando vuole connettersi al server invia un messaggio di SYN, dopodiché si mette in attesa di un messaggio di risposta (SYNACK) contenente i parametri necessari alfunzionamento del protocollo di communicazione affidabile. Questa attesa è limitata dalla presenza di un timer di 5 secondi, allo scadere del quale avviene un nuovo tentativo di connessione reinviando il messaggio di SYN.\\
+Ricevuto il messaggio di risposta, vengono create ed inizializzate le strutture di comunicazione e la connessione risulta instaurata, da questo istante è possibile inviare comandi al server in modo affidabile.\\
 Poiché, al momento della richiesta di connessione, non si dispone nemmeno del parametro relativo alla probabilità di perdita di un pacchetto, il messaggio di SYN viene inviato con probabilità di perdita pari al 20\%.
 
 \begin{lstlisting}[title=client: instaurazione della connessione]
-
 	...
 
 /* set receiving timeout on the socket */
@@ -54,11 +53,34 @@ if (connect(sockfd, (struct sockaddr *) addr, addrlen) == -1)
 init_transport(sockfd, &params);
 
 	...
-
 \end{lstlisting}
 
+I parametri necessari al protocollo di comunicazione affidabile  giungono
+al client incapsulati in una struttura \emph{params} che contiene:
+\begin{itemize}
+\item[T]: intero senza segno a 16 bit che indica il timeout espresso in 
+millisecondi;
+\item[P]: intero senza segno a 8 bit che indica la probabilità di perdita di un
+datagramma nella rete, espresso in percentuale (da 0 a 100);
+\item[N]: intero senza segno a 8 bit che indica l'ampiezza della finestre di
+invio e ricezione del protocollo selective repeat;
+\item[adaptive]: intero senzo segno a 8 bit interpretato come valore booleano
+che indica se il protocollo di comunicazione affidabile deve avere un timeout
+di tipo adattativo per ogni segmento che viene inviato.
+\end{itemize}
 
-Il server, costantemente in attesa di richieste di connessione, alla ricezione di un messaggio di SYN, crea un processo figlio al quale affida il compito di inviare i parametri di connessione e di gestire la connessione con il client.
+\begin{lstlisting}[title=basics.h]
+struct proto_params {
+	uint16_t T;
+	uint8_t  P;
+	uint8_t  N;
+	uint8_t  adaptive;
+};
+\end{lstlisting}
+
+Il server, costantemente in attesa di richieste di connessione, alla ricezione
+di un messaggio di SYN, crea un processo figlio al quale affida il compito di 
+inviare i parametri di connessione e di gestire la connessione con il client.
 
 \begin{lstlisting}[title=server: instaurazione della connessione]
 

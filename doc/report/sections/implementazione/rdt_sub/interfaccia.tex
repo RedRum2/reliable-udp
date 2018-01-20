@@ -1,8 +1,16 @@
 \subsubsection{Interfaccia}
-L'interfaccia che offre questo stato di trasporto virtuale, come descritto nei primi capitoli, è simile a quella che un programmatore ha a disposizione per un protocollo TCP.\\
-Per richiamare la funzione per l'invio dei dati (\emph{rdt\_send}) basta specificare l'indirizzo e la dimensione del buffer contente i dati da inviare, mentre per la ricezione (\emph{rdt\_recv}) l'indirizzo e la dimensione del buffer che riceverà i dati.\\
-A differenza delle comuni \emph{read} e \emph{write} non va specificato il file descriptor della socket, perché il servizio di trasporto virtuale si basa su una connessione, per cui la socket è fissata al momento dell'instaurazione della connessione, che avviene quando viene chiamata la funzione \emph{init\_transport}.\\
-Inoltre la funzione \emph{rdt\_read\_string} permette di leggere una stringa di una certa lunghezza massima dal messaggio arrivato, cosa necessaria per poter leggere il nome del file che si vuole scaricare.
+L'interfaccia che offre questo stato di trasporto virtuale, come descritto nei primi capitoli,
+è simile a quella che un programmatore ha a disposizione per un protocollo TCP.\\
+Per richiamare la funzione per l'invio dei dati (\emph{rdt\_send}) basta specificare l'indirizzo
+e la dimensione del buffer contente i dati da inviare, mentre per la ricezione (\emph{rdt\_recv}), 
+l'indirizzo e la dimensione del buffer che riceverà i dati.\\
+A differenza delle comuni \emph{read} e \emph{write} non va specificato il file descriptor della 
+socket, perché il servizio di trasporto virtuale si basa su una connessione, per cui la socket è 
+fissata al momento dell'instaurazione della connessione, che avviene quando viene chiamata la 
+funzione \emph{init\_transport}.\\
+Inoltre la funzione \emph{rdt\_read\_string} permette di leggere una stringa di una certa 
+lunghezza massima dal messaggio arrivato, cosa necessaria per poter leggere il nome del file che 
+si vuole scaricare.
 
 \begin{lstlisting}[title=transport.h].
 void init_transport(int sockfd, struct proto_params *params);
