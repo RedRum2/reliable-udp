@@ -41,9 +41,25 @@ void *recv_service(void *p)
 }
 \end{lstlisting}
 Il thread, bloccato in lettura sulla socket, quando riceve un segmento
-chiama la funzione \emph{process\_segment} che
+chiama la funzione \emph{process\_segment} che controlla il numero di 
+sequenza. Se questo cade all'interno della finestra, si controlla se non
+è un duplicato ed in tal caso il segmento viene salvato nel buffer locale
+e viene marcato come ``giunto'' impostando ad 1 il bit relativo nella finestra,
+poi, se coincide con la base della finestra, vengono consegnati a livello 
+applicativo tutti i segmenti
+consecutivi presenti nel buffer a partire dalla base, infine la funzione
+restituisce \emph{true} per segnalare che il segmento è valido ed 
+è necessario inviare l'ack al mittente.\\
+Se il numero di sequenza cade nell'intervallo precedente alla base della
+finestra \emph{[base - ampiezza; base - 1]},
+il segmento è già stato ricevuto e quindi 
+viene ignorato, ma la funzione restituisce comunque il valore \emph{true}
+poiché è necessario inviare l'ack.\\
+In tutti gli altri casi, un eventuale segmento viene ignorato e la funzione 
+restituisce false per non far inviare il relativo ack al mittente.
 \begin{lstlisting}[title=transport.c]
-bool process_segment(struct segment *sgt, struct segment *segments_cb,
+bool process_segment(struct segment *sgt, 
+                     struct segment *segments_cb,
                      struct window *w, struct circular_buffer *cb)
 {
     static unsigned int S = 0;
@@ -91,9 +107,15 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
     return false;
 }
 \end{lstlisting}
-
+Nel caso in cui il numero di sequenza coincide con la base della finestra,
+vengono contati i bit consecutivi impostati ad 1 e, successivamente, 
+vengono consegnati a livello applicativo altrettanti segmenti (a partire 
+da quello appena arrivato) tramite la funzione \emph{deliver\_segment}, 
+che ne immette il payload nel buffer circolare condiviso appena c'è spazio
+disponibile.
 \begin{lstlisting}[title=transport.c]
-void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
+void deliver_segment(struct circular_buffer *cb, 
+                     struct segment *sgt)
 {
     if (pthread_mutex_lock(&cb->mtx) != 0)
         handle_error("pthread_mutex_lock");
@@ -103,7 +125,8 @@ void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
         if (pthread_cond_wait(&cb->cnd_not_full, &cb->mtx) != 0)
             handle_error("pthread_cond_wait");
 
-    memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
+    memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, 
+                CBUF_SIZE);
     cb->E = (cb->E + sgt->size) % CBUF_SIZE;
 
     if (pthread_cond_signal(&cb->cnd_not_empty) != 0)

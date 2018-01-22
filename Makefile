@@ -6,11 +6,17 @@ OBJ = $(SRC:.c=.o)
 all: $(OBJ) 
 	${CC} ${CFLAGS} client.o rw.o clicmd.o cmd_commons.o transport.o simul_udt.o event.o window.o bit_array.o adaptive.o cb_utils.o timespec_utils.o -o client queue.o
 	${CC} ${CFLAGS} server.o strto.o rw.o srvcmd.o cmd_commons.o transport.o simul_udt.o event.o window.o bit_array.o adaptive.o cb_utils.o timespec_utils.o -o server queue.o
+	${CC} ${CFLAGS} client_test.o rw.o clicmd.o cmd_commons.o transport.o simul_udt.o event.o window.o bit_array.o adaptive.o cb_utils.o timespec_utils.o queue.o -o client_test 
+	${CC} ${CFLAGS} server_test.o strto.o rw.o srvcmd.o cmd_commons.o transport.o simul_udt.o event.o window.o bit_array.o adaptive.o cb_utils.o timespec_utils.o queue.o -o server_test
 
 
 client.o: rw.h clicmd.h simul_udt.h transport.h
 
 server.o: rw.h srvcmd.h simul_udt.h strto.h transport.h
+
+client_test.o: rw.h clicmd.h simul_udt.h transport.h
+
+server_test.o: rw.h srvcmd.h simul_udt.h strto.h transport.h
 
 rw.o: rw.h
 

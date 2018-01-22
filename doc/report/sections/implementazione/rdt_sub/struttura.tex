@@ -143,7 +143,7 @@ disponibile sui buffer.
 \includegraphics[scale=0.35]{images/structure_1}
 
 Prima di passare a come viene implementato il \emph{selective repeat}, è 
-necessario introdurre le strutture principale che ne supportano il 
+necessario introdurre le strutture principali che ne supportano il 
 funzionamento.\\
 Come già detto, le unità di base con cui l'algoritmo ha a che fare sono
 i segmenti che contengono i dati applicativi. Poiché tali segmenti sono
@@ -191,7 +191,7 @@ partire dalla base della finestra.
 [Disegno esempio bitmask] 
 
 Infine, vi è la struttura necessaria alla gestione del timeout dei segmenti
-inviati: una coda priotritaria i cui nodi sono puntatori
+inviati: una coda prioritaria i cui nodi sono puntatori
 ai pacchetti presenti nel buffer locale di invio.\\
 Ogni nodo è ordinato in base alla scadenza del timeout e una scansione 
 periodica determina quali segmenti vanno ritrasmessi, appena si trova un 

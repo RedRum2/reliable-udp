@@ -217,9 +217,8 @@ for (;;) {
 \end{lstlisting}
 
 Alla ricezione del segnale di ack il servizio di invio aggiorna il valore 
-del timeout e la finestra eventualmente facendola scorrere se il numero
+del timeout e la finestra, eventualmente facendola scorrere se il numero
 di sequenza è relativo alla base della finestra stessa.
-
 \begin{lstlisting}[title=transport.c]
 switch (e->type) {
 
@@ -248,6 +247,9 @@ a segmenti che non hanno subito ritrasmissioni.\\
 La funzione \emph{adapt\_timeout} aggiorna il timeout in base a quanto tempo
 è trascorso dall'invio del segmento fino alla ricezione dell'ack, come
 descritto nel libro di testo [riferimento], secondo la formula [formula]
+
+Il tempo trascorso è calcolato sottraendo all'istante corrente quello di invio
+del segmento ricevuto.
 \begin{lstlisting}[title=transport.c]
 void update_timeout(struct timespec *timeout, struct packet *pkt)
 {
@@ -266,32 +268,31 @@ void update_timeout(struct timespec *timeout, struct packet *pkt)
     adapt_timeout(timeout, &elapsed);
 }
 \end{lstlisting}
+L'aggiornamento della finestra consiste nel contrassegnare il segmento come
+ricevuto. Questo viene fatto impostando il relativo bit a 1 nella barra degli
+ack della finestra.\\
+Se il numero di sequenza corrisponde alla base della finestra, il bit non viene
+impostato e viene fatta scorrere la finestra relativamente al prossimo segmento
+per cui deve ancora arrivare un riscontro.
 \begin{lstlisting}[title=window.c]
 void update_window(struct window *w, uint8_t acknum)
 {
     unsigned int i, s;
 
     if (acknum == w->base) {
-
         /* shift ack bar to the first unmarked bit */
         s = calc_shift(w);
         if (shift(&w->ack_bar, s) == -1)
             handle_error("shift()");
-
         /* slide window */
         w->base = (w->base + s) % MAXSEQNUM;
-        fprint_window(stderr, w);
     }
-
     else if (in_window(w, acknum)) {
-
         /* calculate distance from window's base */
         i = distance(w, acknum);
         /* mark packet as acked */
         if (set_bit(&w->ack_bar, i) == -1)
             handle_error("set_bit()");
-
-        fprint_window(stderr, w);
     }
 }
 \end{lstlisting}
@@ -340,7 +341,7 @@ for (;;) {
 \end{lstlisting}
 Nello specifico la funzione per la ritrasmissione estrae segmenti fintanto
 che non ne trova uno che non sia scaduto, per ognuno di essi si controlla 
-se non è stato già ricevuto e in tal caso il segmento viene inviato di
+se non è stato già ricevuto ed in tal caso il segmento viene inviato di
 nuovo, marcato come ritrasmesso e vengono aggiornati i tempi di invio e di
 scadenza, infine viene di reinserito nella coda.
 \begin{lstlisting}[title=transport.c]

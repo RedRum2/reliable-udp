@@ -226,8 +226,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
     if (pthread_mutex_lock(&cb->mtx) != 0)
         handle_error("pthread_mutex_lock");
 
-    while (cb->S != cb->E && 
-			cbuf_free(w->base, *last_seqnum, MAXSEQNUM)) {
+    while (cb->S != cb->E && cbuf_free(w->base, *last_seqnum, MAXSEQNUM)) {
         // shared buffer not empty and local buffer has free slots
 
         data = data_available(cb->S, cb->E, CBUF_SIZE);
@@ -698,8 +697,8 @@ void deliver_segment(struct circular_buffer *cb, struct segment *sgt)
         if (pthread_cond_wait(&cb->cnd_not_full, &cb->mtx) != 0)
             handle_error("pthread_cond_wait");
 
-	memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
-	cb->E = (cb->E + sgt->size) % CBUF_SIZE;
+    memcpy_tocb(cb->buf, sgt->payload, sgt->size, cb->E, CBUF_SIZE);
+    cb->E = (cb->E + sgt->size) % CBUF_SIZE;
 
     if (pthread_cond_signal(&cb->cnd_not_empty) != 0)
         handle_error("pthread_cond_signal");
@@ -762,10 +761,10 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
             /* calculate the number of consecutive arrived segments */
             s = calc_shift(w);
             /* deliver consecutive arrived segments */
-			for (i = 0; i < s; i++) {
-				deliver_segment(cb, segments_cb + S);
-				S = (S + 1) % w->width;
-			}
+            for (i = 0; i < s; i++) {
+                deliver_segment(cb, segments_cb + S);
+                S = (S + 1) % w->width;
+            }
             /* update window indexes */
             shift_window(w, s);
             w->base = (w->base + s) % MAXSEQNUM;
