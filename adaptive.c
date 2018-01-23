@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 
+#define MIN_TIMEOUT_NSEC	250000000
 
 
 long long calc_estimated_rtt(long long sample)
@@ -44,7 +45,10 @@ void adapt_timeout(struct timespec *timeout, struct timespec *elapsed)
     estimated_rtt = calc_estimated_rtt(sample_rtt);
     dev_rtt = calc_dev_rtt(sample_rtt, estimated_rtt);
 
-    timeout_nsec = estimated_rtt + 4 * dev_rtt;
+    timeout_nsec = estimated_rtt + 4 * dev_rtt;	
+
+	if (timeout_nsec < MIN_TIMEOUT_NSEC)
+		timeout_nsec = MIN_TIMEOUT_NSEC;
 
     nsectots(timeout, timeout_nsec);
 }

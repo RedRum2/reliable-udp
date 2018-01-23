@@ -15,8 +15,8 @@ void create_test_connection(int sockfd, struct sockaddr_in *addr);
 int main(int argc, char **argv)
 {
     int sockfd;
-	int pid;
-	unsigned int i;
+    int pid;
+    unsigned int i;
     struct sockaddr_in servaddr;
 
 
@@ -25,39 +25,39 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s <server IP address>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-
-	// reset server address 
-	memset((void *) &servaddr, 0, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(SERVER_PORT);
-	if (inet_aton(argv[1], &servaddr.sin_addr) == 0)
-		handle_error("inet_aton()");
+    // reset server address 
+    memset((void *) &servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(SERVER_PORT);
+    if (inet_aton(argv[1], &servaddr.sin_addr) == 0)
+        handle_error("inet_aton()");
 
     for (i = 0; i < 14; i++) {
 
-		// create child 
-		if ((pid = fork()) == -1)
-			handle_error("fork()");
+        // create child 
+        if ((pid = fork()) == -1)
+            handle_error("fork()");
 
-		if (!pid) {
-			// create a new socket 
-			sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-			if (sockfd == -1)
-				handle_error("socket()");
+        if (!pid) {
+            // create a new socket 
+            sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+            if (sockfd == -1)
+                handle_error("socket()");
 
-			create_test_connection(sockfd, &servaddr);
-		}
+            create_test_connection(sockfd, &servaddr);
 
-		// wait for child termination 
-		if (wait(NULL) == -1)
-			handle_error("wait");
+			close(sockfd);
+			exit(EXIT_SUCCESS);
+        }
+        // wait for child termination 
+        if (wait(NULL) == -1)
+            handle_error("wait");
         printf("Buried zombie %d\n", pid);
-	}
-	
+    }
 
-	//create_test_connection(sockfd, &servaddr);
 
-    close(sockfd);
+    //create_test_connection(sockfd, &servaddr);
+
     exit(EXIT_SUCCESS);
 }
 
@@ -67,58 +67,56 @@ void create_test_connection(int sockfd, struct sockaddr_in *addr)
     static struct proto_params params;
     addrlen = sizeof(struct sockaddr);
 
-	/* send SYN */
-	if (udt_sendto
-		(sockfd, NULL, 0, (struct sockaddr *) addr, addrlen, 0.0) == -1)
-		handle_error("udt_sendto() - sending SYN");
+    /* send SYN */
+    if (udt_sendto
+        (sockfd, NULL, 0, (struct sockaddr *) addr, addrlen, 0.0) == -1)
+        handle_error("udt_sendto() - sending SYN");
 
-	fputs("SYN sent, waiting for SYN ACK\n", stderr);
+    fputs("SYN sent, waiting for SYN ACK\n", stderr);
 
-	/* get SYN_ACK and server connection address */
-	if (recvfrom
-		(sockfd, &params, sizeof(params), 0, (struct sockaddr *) addr,
-		 &addrlen) == -1) 
-		handle_error("recvfrom()");
-	
+    /* get SYN_ACK and server connection address */
+    if (recvfrom
+        (sockfd, &params, sizeof(params), 0, (struct sockaddr *) addr,
+         &addrlen) == -1)
+        handle_error("recvfrom()");
+
     /* set the endpoint */
     if (connect(sockfd, (struct sockaddr *) addr, addrlen) == -1)
         handle_error("connect()");
 
     /* initialize transport layer */
     init_transport(sockfd, &params);
-	fputs("connected!\n", stderr);
-	test_job(&params);
+    fputs("connected!\n", stderr);
+    test_job(&params);
 }
 
 
 void test_job(struct proto_params *params)
 {
-	printf("testjob\n");
+    printf("testjob\n");
 
-	struct timespec start, end, elapsed;
-	char *filename = "test";
-	FILE *file = fopen("test_files/test.csv", "a");
-	if (!file)
-		handle_error("fopen()");
+    struct timespec start, end, elapsed;
+    char *filename = "test";
+    FILE *file = fopen("test_files/test.csv", "a");
+    if (!file)
+        handle_error("fopen()");
 
-	if (clock_gettime(CLOCK_REALTIME, &start) == -1)
-		handle_error("getting test start time");
+    if (clock_gettime(CLOCK_REALTIME, &start) == -1)
+        handle_error("getting test start time");
 
-	cli_get(filename);
+    cli_get(filename);
 
-	if (clock_gettime(CLOCK_REALTIME, &end) == -1)
-		handle_error("getting test end time");
-	if (timespec_sub(&elapsed, &end, &start) == -1)
-		handle_error("calculating test elapsed time");
+    if (clock_gettime(CLOCK_REALTIME, &end) == -1)
+        handle_error("getting test end time");
+    if (timespec_sub(&elapsed, &end, &start) == -1)
+        handle_error("calculating test elapsed time");
 
-	puts("tempo impiegato");
-	fprintf(file, "%u ", params->N);
-	//fprintf(stdout, "%u ", params->P);
-	//fprintf(stdout, "%u ", params->T);
-	fprint_timespec(file, &elapsed);
-	fclose(file);
-
-	exit(EXIT_SUCCESS);
+    puts("tempo impiegato");
+    fprintf(file, "%u ", params->N);
+    //fprintf(stdout, "%u ", params->P);
+    //fprintf(stdout, "%u ", params->T);
+    fprint_timespec(file, &elapsed);
+    fclose(file);
 }
 
 

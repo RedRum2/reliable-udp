@@ -10,7 +10,7 @@
 #define MAX_LOSS	100
 #define MIN_WIDTH	1
 #define MAX_WIDTH	127
-#define MIN_TIMEOUT	100
+#define MIN_TIMEOUT	250
 #define MAX_TIMEOUT	3000
 
 

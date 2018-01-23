@@ -9,6 +9,8 @@
  * Function:	set_bit	
  * ---------------------------
  * Set the x-th bit to 1.
+ * x / K is the index of the variable
+ * x % K is the relative position into the variable
  * 
  * Parameters:
  * 		array:	the bit_array struct address	
@@ -25,7 +27,7 @@ int set_bit(struct bit_array *array, unsigned int x)
         return -1;
     }
 
-    array->bits[x / K_BIT] |= 1 << (x % K_BIT);
+    array->bits[x / K_BIT] |= (1 << (x % K_BIT));
 
     return 0;
 }
@@ -36,6 +38,8 @@ int set_bit(struct bit_array *array, unsigned int x)
  * Function:	check_bit	
  * ---------------------------
  * Check if the x-th bit is set to 1.
+ * x / K is the index of the variable
+ * x % K is the relative position into the variable
  * 
  * Parameters:
  * 		array:	the bit_array struct address	
@@ -85,8 +89,8 @@ int shift(struct bit_array *array, unsigned int shift)
         return -1;
     }
 
-    a = array->bits;
-    n = shift / K_BIT;
+    a = array->bits;			// var array
+    n = shift / K_BIT;			// var index
     x = shift % K_BIT;          // relative shift
 
     if (n) {
@@ -94,10 +98,11 @@ int shift(struct bit_array *array, unsigned int shift)
             a[i] = a[n + i];
         memset(a + i, 0, (N_VAR - i) * sizeof(uint32_t));
     }
-
-    for (i = 0; i < N_VAR - 1; i++)
-        a[i] = (a[i] >> x) | (a[i + 1] << (K_BIT - x));
-    a[N_VAR - 1] >>= x;
+	if (x) {
+		for (i = 0; i < N_VAR - 1; i++)
+			a[i] = (a[i] >> x) | (a[i + 1] << (K_BIT - x));
+		a[N_VAR - 1] >>= x;
+	}
 
     return 0;
 }

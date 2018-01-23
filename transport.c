@@ -7,6 +7,9 @@
 #include "timespec_utils.h"
 
 
+//#define EMPTY_LIMIT	20
+//#define SEND_LIMIT	10
+
 
 /* shared structures */
 struct circular_buffer recv_cb;
@@ -222,11 +225,12 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
                   struct window *w, unsigned int *last_seqnum)
 {
     size_t data, size;
+	//unsigned int limit = 0;
 
     if (pthread_mutex_lock(&cb->mtx) != 0)
         handle_error("pthread_mutex_lock");
 
-    while (cb->S != cb->E && cbuf_free(w->base, *last_seqnum, MAXSEQNUM)) {
+    while (cb->S != cb->E && cbuf_free(w->base, *last_seqnum, MAXSEQNUM) /*&& limit < EMPTY_LIMIT*/) {
         // shared buffer not empty and local buffer has free slots
 
         data = data_available(cb->S, cb->E, CBUF_SIZE);
@@ -236,6 +240,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         store_pkt(pkts, *last_seqnum, size, cb);
         *last_seqnum = (*last_seqnum + 1) % MAXSEQNUM;
         cb->S = (cb->S + size) % CBUF_SIZE;
+		//limit++;
 
         if (pthread_cond_signal(&cb->cnd_not_full) != 0)
             handle_error("pthread_cond_signal");
@@ -273,7 +278,7 @@ void fprint_pkt(FILE * stream, void *p)
 
 
 /*
- * Function:	pkt_exptimecmp	
+ * Function:	exptime_cmp	
  * -------------------------------------
  * Compare the expiration time of two segments.
  *
@@ -286,7 +291,7 @@ void fprint_pkt(FILE * stream, void *p)
  * 		0
  * 		-1
  */
-int pkt_exptimecmp(void *xp, void *yp)
+int exptime_cmp(void *xp, void *yp)
 {
     struct packet *x = xp;
     struct packet *y = yp;
@@ -328,6 +333,8 @@ void pkt_settime(struct packet *pkt, struct timespec *timeout)
         handle_error("getting packet timestamp");
 
     timespec_add(&pkt->exptime, &pkt->sendtime, timeout);
+	fputs("exptime: ", stderr);
+	fprint_timespec(stderr, &pkt->exptime);
 }
 
 
@@ -403,8 +410,9 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
                     struct timespec *timeout, struct window *w)
 {
     struct packet *pkt;
+	//unsigned int limit = 0;
 
-    while (time_queue->head != NULL) {
+    while (time_queue->head != NULL /*&& limit < SEND_LIMIT*/) {
 
         /* fetch first to expire packet */
         pkt = get_head_packet(time_queue);
@@ -418,18 +426,21 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
         //fprint_queue(stderr, time_queue, fprint_pkt);
 
         /* check if packed has been acked */
-        if (pkt_acked(w, pkt->sgt.seqnum))
+        if (pkt_acked(w, pkt->sgt.seqnum)) {
+			printf("\n\nGIA ACKATO!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
             continue;
+		}
 
         fprintf(stderr, "try to resend packet %u\n", pkt->sgt.seqnum);
         send_packet(sockfd, pkt, loss);
         pkt->rtx = true;
+		//limit++;
 
         /* set packet time */
         pkt_settime(pkt, timeout);
 
-        prio_enqueue(pkt, time_queue, pkt_exptimecmp);
-        //fprint_queue(stderr, time_queue, fprint_pkt);
+        prio_enqueue(pkt, time_queue, exptime_cmp);
+        fprint_queue(stderr, time_queue, fprint_pkt);
     }
 }
 
@@ -485,10 +496,11 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
                   struct queue_t *time_queue, struct timespec *timeout)
 {
     static unsigned int nextseqnum = 0;
+	//unsigned int limit = 0;
     struct packet *pkt;         // packet pointer
 
     while (in_window(w, nextseqnum) &&
-           more_packets(nextseqnum, w->base, lastseqnum)) {
+           more_packets(nextseqnum, w->base, lastseqnum) /*&& limit < SEND_LIMIT*/) {
         // nextseqnum is inside the window and
         // there are packets not sent yet
 
@@ -500,14 +512,15 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
         /* set packet sendtime and exptime */
         pkt_settime(pkt, timeout);
 
-        prio_enqueue(pkt, time_queue, pkt_exptimecmp);
-        //fprint_queue(stderr, time_queue, fprint_pkt);
+        prio_enqueue(pkt, time_queue, exptime_cmp);
+        fprint_queue(stderr, time_queue, fprint_pkt);
 
         nextseqnum = (nextseqnum + 1) % MAXSEQNUM;
+		//limit++;
     }
 
-    fprintf(stderr, "base = %u, nextseqnum = %u, lastseqnum = %u\n",
-            w->base, nextseqnum, lastseqnum);
+    //fprintf(stderr, "base = %u, nextseqnum = %u, lastseqnum = %u\n",
+    //        w->base, nextseqnum, lastseqnum);
 }
 
 
@@ -571,6 +584,30 @@ void update_timeout(struct timespec *timeout, struct packet *pkt)
 }
 
 
+int seqnum_cmp(void *x, void *y)
+{	
+	struct packet *xp = x;
+	struct packet *yp = y;
+	struct segment *xs = &xp->sgt;
+	struct segment *ys = &yp->sgt;
+	
+	if (xs->seqnum < ys->seqnum)
+		return -1;
+	else if (xs->seqnum > ys->seqnum)
+		return 1;
+	return 0;
+}
+
+
+void remove_pkt_timeout(struct queue_t *q, uint8_t acknum)
+{
+	struct packet pkt;
+	pkt.sgt.seqnum = acknum;
+	if (remove_node(&pkt, q, seqnum_cmp) == -1)
+		fprintf(stderr, "\n\n NO SEGMENT IN THE QUEUE\n\n");
+	fprint_queue(stderr, q, fprint_pkt);
+}
+
 
 
 void *send_service(void *p)
@@ -620,10 +657,10 @@ void *send_service(void *p)
             /* calculate remaining time to wait */
             if (calc_wait_time(&time_queue, &wait_time) == -1) {
                 /* timeout expired: resend expired packets */
-                resend_expired(sockfd, loss, &time_queue, &timeout, &w);
                 fputs
                     ("timeout expired while calculating remaining time to timeout\n",
                      stderr);
+                resend_expired(sockfd, loss, &time_queue, &timeout, &w);
                 continue;
             }
 
@@ -643,16 +680,18 @@ void *send_service(void *p)
         switch (e->type) {
 
         case PKT_EVENT:
-            fputs("PACKET EVENT\n", stderr);
+            //fputs("PACKET EVENT\n", stderr);
             break;
 
         case ACK_EVENT:
-            fputs("ACK EVENT\n", stderr);
+            //fputs("ACK EVENT\n", stderr);
             acknum = e->acknum;
             fprintf(stderr, "Received ACK %d\n", acknum);
             if (params->adaptive)
                 update_timeout(&timeout, pkts_buffer + acknum);
             fprint_timespec(stderr, &timeout);
+			remove_pkt_timeout(&time_queue, acknum);
+			//fprint_queue(stderr, time_queue, fprint_pkt);
             update_window(&w, acknum);
             break;
 

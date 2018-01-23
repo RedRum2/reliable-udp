@@ -30,7 +30,7 @@ int main(int argc, char **argv)
     params.N = 30;
     params.T = 1000;            // milliseconds
     params.P = 10;              // decimal part
-    params.adaptive = 1;        // boolean value
+    params.adaptive = 0;        // boolean value
     server_port = SERVER_PORT;
 
 
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 
             handle_error("waiting for connection requests");
         }
-
+		puts("got connection request");
 
         /* create a new proccess to handle the client requests */
         pid = fork();

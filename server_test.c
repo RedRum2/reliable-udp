@@ -13,7 +13,7 @@ void create_connection(struct proto_params *params,
                        struct sockaddr_in *cliaddr, socklen_t clilen);
 void test_job(void);
 void create_test_connection(struct proto_params *params,
-                       struct sockaddr_in *cliaddr, socklen_t clilen);
+                            struct sockaddr_in *cliaddr, socklen_t clilen);
 void register_zombie_handler(void);
 void sig_zombie_handler(int sig);
 
@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 
     /* init configuration parameters with default values */
     params.N = 30;
-    params.T = 500;            // milliseconds
+    params.T = 500;             // milliseconds
     params.P = 10;              // decimal part
     params.adaptive = 0;        // boolean value
     server_port = SERVER_PORT;
@@ -75,10 +75,10 @@ int main(int argc, char **argv)
     /* register SIGCHLD signal handler */
     register_zombie_handler();
 
-    for ( ; params.N < MAX_WIDTH; params.N += 10) {
-    //for (params.N = MIN_WIDTH; params.N < MAX_WIDTH; params.N += 10) {
-    //for (params.P = 0; params.P < MAX_LOSS; params.N += 10 ) {
-    //for (params.T = MIN_TIMEOUT; params.T < MAX_TIMEOUT; params.N += ) {
+    for (; params.N < MAX_WIDTH; params.N += 10) {
+        //for (params.N = MIN_WIDTH; params.N < MAX_WIDTH; params.N += 10) {
+        //for (params.P = 0; params.P < MAX_LOSS; params.N += 10 ) {
+        //for (params.T = MIN_TIMEOUT; params.T < MAX_TIMEOUT; params.N += ) {
 
         clilen = sizeof(cliaddr);
         memset((void *) &cliaddr, 0, clilen);
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
                 handle_error("close()");
 
             create_test_connection(&params, &cliaddr, clilen);
-			server_job();
+            server_job();
         }
     }
 
@@ -122,7 +122,7 @@ int main(int argc, char **argv)
 
 
 void create_test_connection(struct proto_params *params,
-                       struct sockaddr_in *cliaddr, socklen_t clilen)
+                            struct sockaddr_in *cliaddr, socklen_t clilen)
 {
     int connsd;
 
@@ -135,8 +135,7 @@ void create_test_connection(struct proto_params *params,
         handle_error("socket()");
 
     /* send SYN_ACK with protocol parameters */
-    if (udt_send
-        (connsd, params, sizeof(struct proto_params), 0.0) == -1)
+    if (udt_send(connsd, params, sizeof(struct proto_params), 0.0) == -1)
         handle_error("udt_send() - sending SYN_ACK");
 
     init_transport(connsd, params);
@@ -195,7 +194,8 @@ void create_connection(struct proto_params *params,
 
     /* send SYN_ACK with protocol parameters */
     if (udt_send
-        (connsd, params, sizeof(struct proto_params), params->P / 100.0) == -1)
+        (connsd, params, sizeof(struct proto_params),
+         params->P / 100.0) == -1)
         handle_error("udt_send() - sending SYN_ACK");
 
     init_transport(connsd, params);

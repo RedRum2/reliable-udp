@@ -37,8 +37,9 @@ int main(int argc, char **argv)
 
 
     /* try to connect */
+	puts("connecting...");
     create_connection(sockfd, &servaddr);
-    printf("connected!");
+    puts("connected!");
 
 
     client_job();
@@ -118,6 +119,7 @@ void client_job(void)
 
         filename = NULL;
 
+		puts("enter a command \nLIST \nGET <filename> \nPUT <filename>");
         if (!fgets(line, MAXLINE, stdin)) {
             perror("fgets()");
             continue;
@@ -131,39 +133,32 @@ void client_job(void)
             handle_error("parsing command from input");
 
         cmd_code = get_cmdcode(cmd);
-
-
         switch (cmd_code) {
 
-
         case LIST:
-            puts("case LIST\n");
+            //puts("LIST");
             cli_list();
             break;
 
-
         case GET:
-            puts("case GET\n");
+            //puts("case GET");
             filename = extract_filename(line);
             if (!filename)
                 handle_error("parsing filename from input()");
-            fprintf(stderr, "filename: \"%s\"\n", filename);
+            //fprintf(stderr, "filename: \"%s\"\n", filename);
             cli_get(filename);
             break;
 
-
         case PUT:
-            puts("case PUT\n");
+            //puts("case PUT");
             if ((filename = extract_filename(line)) == NULL)
                 handle_error("parsing filename from input()");
-            fprintf(stderr, "filename: \"%s\"\n", filename);
+            //fprintf(stderr, "filename: \"%s\"\n", filename);
             cli_put(filename);
             break;
 
-
         default:
-            fprintf(stderr, "Command not found.\n");
-
+            puts("Command not found.");
         }
 
         free(filename);
