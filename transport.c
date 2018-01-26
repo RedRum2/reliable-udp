@@ -7,8 +7,8 @@
 #include "timespec_utils.h"
 
 
-//#define EMPTY_LIMIT	20
-//#define SEND_LIMIT	10
+//#define EMPTY_LIMIT   20
+//#define SEND_LIMIT    10
 
 
 /* shared structures */
@@ -22,11 +22,13 @@ struct shared_tools recv_tools, send_tools;
 
 
 
-
-int min(int x, int y)
+void fprint_status(FILE * stream, struct window *w)
 {
-    return x <= y ? x : y;
+    fputs("\r", stream);
+    fprint_window(stream, w);
 }
+
+
 
 
 /*
@@ -59,7 +61,7 @@ void rdt_send(const void *buf, size_t len)
                 handle_error("pthread_cond_wait");
 
         /* calculate how much data to send */
-        tosend = left < MSS ? left : min(left / MSS, free / MSS) * MSS;
+        tosend = free > left ? left : (free / MSS) * MSS;
 
         memcpy_tocb(send_cb.buf, buf + len - left, tosend, send_cb.E,
                     CBUF_SIZE);
@@ -225,12 +227,14 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
                   struct window *w, unsigned int *last_seqnum)
 {
     size_t data, size;
-	//unsigned int limit = 0;
+    //unsigned int limit = 0;
 
     if (pthread_mutex_lock(&cb->mtx) != 0)
         handle_error("pthread_mutex_lock");
 
-    while (cb->S != cb->E && cbuf_free(w->base, *last_seqnum, MAXSEQNUM) /*&& limit < EMPTY_LIMIT*/) {
+    while (cb->S != cb->E
+           && cbuf_free(w->base, *last_seqnum,
+                        MAXSEQNUM) /*&& limit < EMPTY_LIMIT */ ) {
         // shared buffer not empty and local buffer has free slots
 
         data = data_available(cb->S, cb->E, CBUF_SIZE);
@@ -240,7 +244,7 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
         store_pkt(pkts, *last_seqnum, size, cb);
         *last_seqnum = (*last_seqnum + 1) % MAXSEQNUM;
         cb->S = (cb->S + size) % CBUF_SIZE;
-		//limit++;
+        //limit++;
 
         if (pthread_cond_signal(&cb->cnd_not_full) != 0)
             handle_error("pthread_cond_signal");
@@ -249,14 +253,6 @@ void empty_buffer(struct circular_buffer *cb, struct packet *pkts,
     if (pthread_mutex_unlock(&cb->mtx) != 0)
         handle_error("pthread_mutex_unlock");
 }
-
-
-
-
-
-
-
-
 
 
 
@@ -287,9 +283,9 @@ void fprint_pkt(FILE * stream, void *p)
  * 		yp	the address of the second packet
  *
  * 	Returns:
- * 		1
- * 		0
- * 		-1
+ * 		1	xp exptime > yp exptime
+ * 		0	xp exptime = yp exptime
+ * 		-1	xp exptime < yp exptime
  */
 int exptime_cmp(void *xp, void *yp)
 {
@@ -302,6 +298,19 @@ int exptime_cmp(void *xp, void *yp)
 
 
 
+/*
+ * Function:	dequeue_pkt
+ * ----------------------------------------------
+ * Deqeueu the first element of the queue and 
+ * return the related packet address.
+ *
+ * Parameters:
+ * 		queue	the address of the queue
+ *
+ * Returns:
+ * 		the address of the related packet,
+ * 		ie the node's value.
+ */
 struct packet *dequeue_pkt(struct queue_t *queue)
 {
     struct packet *pkt;
@@ -333,13 +342,23 @@ void pkt_settime(struct packet *pkt, struct timespec *timeout)
         handle_error("getting packet timestamp");
 
     timespec_add(&pkt->exptime, &pkt->sendtime, timeout);
-	fputs("exptime: ", stderr);
-	fprint_timespec(stderr, &pkt->exptime);
 }
 
 
 
 
+/*
+ * Function:	pkt_expired
+ * --------------------------------------------------
+ * Check if a segment has expired.
+ *
+ * Parameters:
+ * 		pkt		the address of the packet containing the segment
+ *
+ * Returns:
+ *		true	if the segment has expired
+ *		false	otherwise
+ */
 bool pkt_expired(struct packet *pkt)
 {
     struct timespec now;
@@ -410,9 +429,11 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
                     struct timespec *timeout, struct window *w)
 {
     struct packet *pkt;
-	//unsigned int limit = 0;
+    //unsigned int limit = 0;
 
-    while (time_queue->head != NULL /*&& limit < SEND_LIMIT*/) {
+    (void) w;                   // relax warning 
+
+    while (time_queue->head != NULL /*&& limit < SEND_LIMIT */ ) {
 
         /* fetch first to expire packet */
         pkt = get_head_packet(time_queue);
@@ -425,22 +446,24 @@ void resend_expired(int sockfd, double loss, struct queue_t *time_queue,
         dequeue(time_queue);
         //fprint_queue(stderr, time_queue, fprint_pkt);
 
-        /* check if packed has been acked */
-        if (pkt_acked(w, pkt->sgt.seqnum)) {
-			printf("\n\nGIA ACKATO!!!!!!!!!!!!!!!!!!!!!!!!!!\n\n");
-            continue;
-		}
+        /* 
+           //check if packed has been acked 
+           if (pkt_acked(w, pkt->sgt.seqnum)) {
+           continue;
+           }
+         */
 
-        fprintf(stderr, "try to resend packet %u\n", pkt->sgt.seqnum);
+        //fprintf(stderr, "try to resend packet %u\n", pkt->sgt.seqnum);
         send_packet(sockfd, pkt, loss);
         pkt->rtx = true;
-		//limit++;
+        //limit++;
+        //fprint_status(stdout, w);
 
         /* set packet time */
         pkt_settime(pkt, timeout);
 
         prio_enqueue(pkt, time_queue, exptime_cmp);
-        fprint_queue(stderr, time_queue, fprint_pkt);
+        //fprint_queue(stderr, time_queue, fprint_pkt);
     }
 }
 
@@ -496,32 +519,35 @@ void send_packets(int sockfd, double loss, struct packet *pkts,
                   struct queue_t *time_queue, struct timespec *timeout)
 {
     static unsigned int nextseqnum = 0;
-	//unsigned int limit = 0;
+    //unsigned int limit = 0;
     struct packet *pkt;         // packet pointer
 
     while (in_window(w, nextseqnum) &&
-           more_packets(nextseqnum, w->base, lastseqnum) /*&& limit < SEND_LIMIT*/) {
+           more_packets(nextseqnum, w->base,
+                        lastseqnum) /*&& limit < SEND_LIMIT */ ) {
         // nextseqnum is inside the window and
         // there are packets not sent yet
 
         pkt = pkts + nextseqnum;
 
-        fprintf(stderr, "try to send packet %u\n", nextseqnum);
+        //fprintf(stderr, "try to send packet %u\n", nextseqnum);
         send_packet(sockfd, pkt, loss);
+        //fprint_status(stdout, w);
 
         /* set packet sendtime and exptime */
         pkt_settime(pkt, timeout);
 
         prio_enqueue(pkt, time_queue, exptime_cmp);
-        fprint_queue(stderr, time_queue, fprint_pkt);
+        //fprint_queue(stderr, time_queue, fprint_pkt);
 
         nextseqnum = (nextseqnum + 1) % MAXSEQNUM;
-		//limit++;
+        //limit++;
     }
 
     //fprintf(stderr, "base = %u, nextseqnum = %u, lastseqnum = %u\n",
     //        w->base, nextseqnum, lastseqnum);
 }
+
 
 
 
@@ -566,6 +592,17 @@ int calc_wait_time(struct queue_t *q, struct timespec *wait_time)
 
 
 
+/*
+ * Function		update_timeout
+ * ---------------------------------------------------
+ * Update the timeout value considering the RTT related to the
+ * segment with the same sequence number of the just arrrived
+ * ack if the segment was never retransmitted.
+ * 
+ * Parameters:
+ * 		timeout	the timeout current value
+ * 		pkt		the packet structure related to the acknum
+ */
 void update_timeout(struct timespec *timeout, struct packet *pkt)
 {
     struct timespec now, elapsed;
@@ -584,32 +621,72 @@ void update_timeout(struct timespec *timeout, struct packet *pkt)
 }
 
 
+
+/*
+ * Function:	seqnum_cmp
+ * -------------------------------------
+ * Compare the sequence number of the segments
+ * contained in packets structures.
+ *
+ * Parameters:
+ * 		x	the address of the first packet
+ * 		y	the address of the second packet
+ *
+ * Returns:
+ * 		1	if x seqnum > y seqnum
+ * 		o	if x seqnum = y seqnum
+ * 		-1  if x seqnum < y seqnum
+ */
 int seqnum_cmp(void *x, void *y)
-{	
-	struct packet *xp = x;
-	struct packet *yp = y;
-	struct segment *xs = &xp->sgt;
-	struct segment *ys = &yp->sgt;
-	
-	if (xs->seqnum < ys->seqnum)
-		return -1;
-	else if (xs->seqnum > ys->seqnum)
-		return 1;
-	return 0;
+{
+    struct packet *xp = x;
+    struct packet *yp = y;
+    struct segment *xs = &xp->sgt;
+    struct segment *ys = &yp->sgt;
+
+    if (xs->seqnum < ys->seqnum)
+        return -1;
+    else if (xs->seqnum > ys->seqnum)
+        return 1;
+    return 0;
 }
 
 
+
+
+/*
+ * Function:	remove_pkt_timeout
+ * -------------------------------------------------------
+ * Remove a node from the timeout queue reòated to the just 
+ * acked segment to avoid his retransmition.
+ *
+ * Parameters:
+ * 		q		the address of the queue
+ * 		acknum	the sequence number of the acked segment
+ */
 void remove_pkt_timeout(struct queue_t *q, uint8_t acknum)
 {
-	struct packet pkt;
-	pkt.sgt.seqnum = acknum;
-	if (remove_node(&pkt, q, seqnum_cmp) == -1)
-		fprintf(stderr, "\n\n NO SEGMENT IN THE QUEUE\n\n");
-	fprint_queue(stderr, q, fprint_pkt);
+    struct packet pkt;
+    pkt.sgt.seqnum = acknum;
+    remove_node(&pkt, q, seqnum_cmp);
 }
 
 
 
+
+/*
+ * Function:	send_service
+ * ------------------------------------------
+ * Loop routine that write the socket.
+ * Wait for events, such as data from application, ack received and
+ * segments' expirations.
+ * Get application data, make segments and send them until the related 
+ * ack has come back.
+ * Handle multiple timeouts, and eventually retransmit segments.
+ *
+ * Parameters:
+ * 		p:		a pointer to the required parameters and shared structs
+ */
 void *send_service(void *p)
 {
     struct packet pkts_buffer[MAXSEQNUM];
@@ -657,9 +734,6 @@ void *send_service(void *p)
             /* calculate remaining time to wait */
             if (calc_wait_time(&time_queue, &wait_time) == -1) {
                 /* timeout expired: resend expired packets */
-                fputs
-                    ("timeout expired while calculating remaining time to timeout\n",
-                     stderr);
                 resend_expired(sockfd, loss, &time_queue, &timeout, &w);
                 continue;
             }
@@ -672,7 +746,7 @@ void *send_service(void *p)
 
         /* TIMEOUT EVENT */
         if (condret == ETIMEDOUT) {
-            fputs("TIMEOUT EVENT\n", stderr);
+            //fputs("TIMEOUT EVENT\n", stderr);
             resend_expired(sockfd, loss, &time_queue, &timeout, &w);
             continue;
         }
@@ -686,13 +760,14 @@ void *send_service(void *p)
         case ACK_EVENT:
             //fputs("ACK EVENT\n", stderr);
             acknum = e->acknum;
-            fprintf(stderr, "Received ACK %d\n", acknum);
+            //fprintf(stderr, "Got ACK %d\n", acknum);
             if (params->adaptive)
                 update_timeout(&timeout, pkts_buffer + acknum);
-            fprint_timespec(stderr, &timeout);
-			remove_pkt_timeout(&time_queue, acknum);
-			//fprint_queue(stderr, time_queue, fprint_pkt);
+            //fprint_timespec(stderr, &timeout);
+            remove_pkt_timeout(&time_queue, acknum);
+            //fprint_queue(stderr, &time_queue, fprint_pkt);
             update_window(&w, acknum);
+            //fprint_status(stdout, &w);
             break;
 
         default:
@@ -775,7 +850,7 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
     unsigned int i, s, seqnum;
 
     seqnum = sgt->seqnum;
-    fprintf(stderr, "received segment %u\n", seqnum);
+    //fprintf(stderr, "received segment %u\n", seqnum);
 
     if (in_window(w, seqnum)) {
 
@@ -794,7 +869,8 @@ bool process_segment(struct segment *sgt, struct segment *segments_cb,
         /* mark segment as arrived */
         if (set_bit(&w->ack_bar, i) == -1)
             handle_error("set_bit()");
-        fprint_window(stderr, w);
+        //fprint_window(stderr, w);
+        //fprint_status(stderr, w);
 
         if (seqnum == w->base) {
             /* calculate the number of consecutive arrived segments */
@@ -859,7 +935,7 @@ void *recv_service(void *p)
 
 
     /* set connection timeout */
-    timeout.tv_sec = 30;
+    timeout.tv_sec = 90;
     timeout.tv_usec = 0;
     if (setsockopt
         (sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == -1)
@@ -878,7 +954,7 @@ void *recv_service(void *p)
 
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // timeout expired: close connection
-                puts("Connection expired\n");
+                puts("Connection expired");
                 exit(EXIT_SUCCESS);
             }
 
@@ -892,7 +968,7 @@ void *recv_service(void *p)
             sgt = (struct segment *) buffer;
             if (process_segment(sgt, segments_cb, &recv_window, cb)) {
                 /* send ACK */
-                fprintf(stderr, "try to send ACK %u\n", sgt->seqnum);
+                //fprintf(stderr, "try to send ACK %u\n", sgt->seqnum);
                 if (udt_send
                     (tools->sockfd, &sgt->seqnum, sizeof(uint8_t),
                      loss) == -1)

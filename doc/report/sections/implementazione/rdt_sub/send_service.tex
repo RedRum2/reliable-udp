@@ -9,7 +9,7 @@ il verificarsi di un evento ed il caso opposto, ovvero che non vi è un evento
 da gestire, l'intero \emph{type} invece specifica il tipo di evento che si è
 verificato e l'intero a 8 bit \emph{acknum} contiene il numero di sequenza del
 segmento per il quale si è ricevuto un ack.
-
+%
 \begin{lstlisting}[title=event.h]
 #define NO_EVENT	0
 #define PKT_EVENT	1
@@ -26,20 +26,20 @@ struct event {
 int cond_event_signal(struct event *e, unsigned int event_type);
 int cond_ack_event_signal(struct event *e, uint8_t acknum);
 \end{lstlisting}
-
+%
 La funzione \emph{cond\_event\_signal} permette di inviare un segnale che indica il
 verificarsi della condizione \emph{cond\_event} relativa ad uno specifico tipo di 
 evento.\\
 La funzione \emph{cond\_ack\_event} è relativa soltanto all'avento di ricezione
 di un ack, e permette, oltre che di segnalare l'evento, anche di specificare
 il numero di sequenza del segmento per il quale si è ricevuto l'ack.
-
 In questo modo vengono segnalati gli eventi di consegna di dati dall'applicazione
-e di arrivo di un ack. La scadenza di un timeout invece avviene semplicemente 
+e di arrivo di un ack.\\
+La scadenza di un timeout invece avviene semplicemente 
 impostando un tempo limite di attesa per la funzione \emph{pthread\_cond\_timedwait},
 al termine del quale il thread si risveglia e verrà restituito il valore ETIMEDOUT 
 che indica tale evento.
-
+%
 \begin{lstlisting}[title=transport.c]
 void *send_service(void *p)
 {
@@ -88,23 +88,24 @@ void *send_service(void *p)
         handle_error("pthread_mutex_unlock");
 
 		.......
-
 }
 \end{lstlisting}
-
+%
 L'accesso esclusivo alla variabile \emph{event} è garantito dalla presenza
 del mutex come attributo della stessa.\\
-Il thread di invio è acquisce il mutex appena viene instaurata la connessione
+Il thread di invio acquisisce il mutex appena viene instaurata la connessione
 e lo rilascia soltanto tramite la \emph{pthread\_cond\_timedwait}, ovvero
 quando si mette in attesa di un evento, pertanto non è possibile che la 
-variabile venga acceduta durante la gestione di uno degli eventi.
+variabile venga acceduta durante la gestione di uno degli eventi.\\
 Per quanto riguarda la concorrenza tra il thread principale e il thread di
 ricezione, il primo che accede alla variabile tramite l'acquisizione del
 mutex segnala il proprio evento, poi se il secondo accede e trova che il tipo
 di evento è diverso da NO\_EVENT aspetta fintanto che il thread di invio 
 non se ne occupa e segnala di nuovo l'assenza di eventi tramite la funzione
-\emph{pthread\_cond\_broadcast}.
-
+\emph{pthread\_cond\_broadcast}, a questo punto è possibile segnalare l'evento
+successivo. In altre parole, prima di seganalare un evento, un thread attende 
+che un eventuale evento segnalato precedentemente venga gestito.
+%
 \begin{lstlisting}[title=event.c]
 int cond_event_signal(struct event *e, unsigned int event_type)
 {

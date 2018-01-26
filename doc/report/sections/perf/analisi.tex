@@ -1,0 +1,115 @@
+\subsection{Prestazioni}
+Il sistema è stato analizzato eseguendo client e server sulla stessa 
+macchina, sfruttando l'interfaccia di loopback.\\
+Le prestazioni sono state analizzate facendo variare i paramatri T, P e N
+uno alla volta.\\
+Per effettuare un'analisi automatica e soddisfacente delle prestazioni 
+sono stati opportunamente modificati i moduli \emph{server.c} e 
+\emph{client.c}.\\
+Il server è stato modificato in modo che facesse variare il parametro
+desiderato ad ogni richiesta di un client. In altre parole si ottiene
+un insieme di processi che gestiscono ognuno una connessione con un valore
+del parametro diverso.
+\begin{lstlisting}[title=server\_test.c]
+    .....
+
+for (params.N = MIN_WIDTH; params.N <= MAX_WIDTH; params.N += 10) {
+//for (params.T = MIN_TIMEOUT; params.T < MAX_TIMEOUT; 
+//     params.T += 100) {
+//for (params.P = MIN_LOSS; params.P < MAX_LOSS; params.P += 10) {
+
+	/* wait for connection requests */
+
+	/* create a new proccess to handle the client requests */
+	pid = fork();
+
+	.....
+
+	if (!pid) {             // child process
+
+		create_test_connection(&params, &cliaddr, clilen);
+		server_job();
+	}
+}
+.....
+\end{lstlisting}
+Lato client è stata implementata un'applicazione che genera processi 
+client i quali si connettono sequenzialmente al server. Questi  
+effettuano una richiesta GET dello stesso file ``test'' e al termine
+scrivono il tempo impiegato su di un file.
+Il file in questione ha dimensioni pari a 1.4 MiB, così ridotte 
+affinché sia possibile eseguire i test anche per probabilità elevate di
+perdita in tempi ragionevoli.
+\begin{lstlisting}[title=client\_test.c]
+int main()
+{
+    .....
+
+    for (;;) {
+
+        // create child 
+        pid = fork();
+
+        if (!pid) {
+            // create a new socket  
+            .....
+            create_test_connection(sockfd, &servaddr);
+
+			close(sockfd);
+			exit(EXIT_SUCCESS);
+        }
+        // wait for child termination 
+        if (wait(NULL) == -1)
+            handle_error("wait");
+    }
+    exit(EXIT_SUCCESS);
+}
+
+void create_test_connection(int sockfd, struct sockaddr_in *addr)
+{
+    .....
+
+    /* send SYN */
+    .....
+    /* get SYN_ACK and server connection address */
+    .....
+    /* set the endpoint */
+    .....
+
+    /* initialize transport layer */
+    init_transport(sockfd, &params);
+    test_job(&params);
+}
+
+void test_job(struct proto_params *params)
+{
+    struct timespec start, end, elapsed;
+    char *filename = "test";
+    FILE *file = fopen("test_files/test.dat", "a");
+    if (!file)
+        handle_error("fopen()");
+
+    if (clock_gettime(CLOCK_REALTIME, &start) == -1)
+        handle_error("getting test start time");
+
+    cli_get(filename);
+
+    if (clock_gettime(CLOCK_REALTIME, &end) == -1)
+        handle_error("getting test end time");
+    if (timespec_sub(&elapsed, &end, &start) == -1)
+        handle_error("calculating test elapsed time");
+
+    fprintf(file, "%u ", params->N);
+    //fprintf(file, "%u ", params->P);
+    //fprintf(file, "%u ", params->T);
+
+    fprint_timespec(file, &elapsed);
+
+    fclose(file);
+}
+\end{lstlisting}
+%
+\input{sections/perf/nvar}
+\input{sections/perf/tvar}
+\input{sections/perf/pvar}
+%

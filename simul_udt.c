@@ -60,9 +60,11 @@ ssize_t udt_sendto(int sockfd, const void *buf, size_t len,
 
     if (randgen() > loss) {
         retval = sendto(sockfd, buf, len, 0, addr, addrlen);
-        fputs("frame sent\n", stderr);
-    } else
-        fputs("frame lost\n", stderr);
+        //fputs("frame sent\n", stderr);
+    } else {
+        //fputs("frame lost\n", stderr);
+        ;
+    }
 
     return retval;
 }

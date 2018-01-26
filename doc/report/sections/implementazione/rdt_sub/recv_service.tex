@@ -1,3 +1,14 @@
+%
+Il servizio di ricezione invece risponde ai seguenti eventi:
+\begin{itemize}
+\item[-]Ricezione di dati dalla rete (segmenti o ack);
+\item[-]Scadenza di un timeout relativo alla connessione.
+\end{itemize}
+%
+In caso di ricezione di dati dalla rete, segmenti e ack vengono distinti in 
+base alla loro dimensione, invece il timeout è implementato impostandolo
+sulla socket in lettura.
+%
 \begin{lstlisting}[title=transport.c]
 void *recv_service(void *p)
 {

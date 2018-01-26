@@ -175,7 +175,7 @@ unsigned int calc_shift(struct window *w)
         if (!retval)
             break;
     }
-    fprintf(stderr, "SHIFT = %u\n", i);
+    //fprintf(stderr, "SHIFT = %u\n", i);
     return i;
 }
 
@@ -222,7 +222,6 @@ void update_window(struct window *w, uint8_t acknum)
 
         /* slide window */
         w->base = (w->base + s) % MAXSEQNUM;
-        fprint_window(stderr, w);
     }
 
     else if (in_window(w, acknum)) {
@@ -232,8 +231,6 @@ void update_window(struct window *w, uint8_t acknum)
         /* mark packet as acked */
         if (set_bit(&w->ack_bar, i) == -1)
             handle_error("set_bit()");
-
-        fprint_window(stderr, w);
     }
 }
 
@@ -254,5 +251,5 @@ void fprint_window(FILE * stream, struct window *w)
         else
             fputc('0', stream);
     }
-    fprintf(stream, "\nbase = %u\n", w->base);
+    fprintf(stream, "\nbase:%u\n", w->base);
 }

@@ -1,11 +1,21 @@
 \subsection{Protocollo di comunicazione}
-In generale, il protocollo di comunicazione prevede che il client invii messaggi di comando in cui venga specificato il tipo di comando da eseguire, il server, ricevuto e letto il comando, lo esegue e invia un messaggio di risposta.\\
-Ogni comando prevede un trasferimento file, quindi, a seconda del tipo di comando, o nel messaggio di comando o in quello di risposta viene allegato il file, con le informazioni necessarie alla sua corretta ricezione.\\
-Ogni messaggio di comando e di risposta è composto da campi di un numero fissato di byte contenenti le informazioni necessarie all'interpretazione del messaggio.
-Essendo un'applicazione distribuita, i campi vengono distinti utilizzando variabili la cui ampiezza (numero di bit) è indipendente dall'architettura della macchina, a tal proposito ogni campo informativo è composto dalle variabili definite in \emph{stdint.h}, ad esempio un campo di 8 bit è rappresentato da una variabile di tipo \emph{uint8\_t}.\\ 
-I primi 8 bit di un messaggio di comando indicano sempre il tipo di comando da eseguire e, a seconda del comando, possono avere o meno ulteriori informazioni.
+In generale, il protocollo di comunicazione prevede che il client invii messaggi
+di comando in cui venga specificato il tipo di comando da eseguire, il server, 
+ricevuto e letto il comando, lo esegue e invia un messaggio di risposta.\\
+Ogni comando prevede un trasferimento file, quindi, a seconda del tipo di 
+comando, o nel messaggio di comando o in quello di risposta viene allegato il 
+file con le informazioni necessarie alla sua corretta ricezione.\\
+Ogni messaggio è composto da campi di un numero fissato di byte contenenti le
+informazioni necessarie alla sua interpretazione.
+Essendo un'applicazione distribuita, i campi vengono distinti utilizzando 
+variabili la cui ampiezza (numero di bit) è indipendente dall'architettura 
+della macchina, a tal proposito ogni campo informativo è composto dalle 
+variabili definite in \emph{stdint.h}, ad esempio un campo di 8 bit è 
+rappresentato da una variabile di tipo \emph{uint8\_t}.\\ 
+I primi 8 bit di un messaggio di comando indicano sempre il tipo di comando da 
+eseguire e, a seconda del comando, possono avere o meno ulteriori informazioni.
 
-\begin{lstlisting}[title=Costanti comandi]
+\begin{lstlisting}[title=basic.h]
 // command codes
 #define LIST 		0
 #define GET 		1
@@ -17,20 +27,25 @@ I primi 8 bit di un messaggio di comando indicano sempre il tipo di comando da e
 #define PUT_SUCCESS 2
 #define PUT_FAILURE 3
 \end{lstlisting}
-
-%\begin{figure}
+\begin{figure}[!h]
 \includegraphics[scale=0.35]{images/gen_message}
-%\end{figure}
-
-Una volta impostati i vari campi in un buffer, se non va inviato un file, i dati vengono passati direttamente al livello di trasporto virtuale.\\
-Se altrimenti, va inviato un file, viene chiamata la funzione \emph{send\_file}, i campi informativi vengono considerati un header per il file ed il tutto viene frammentato (per non allocare troppa RAM) e passato al livello sottostante.\\
-Lato opposto il ricevente analizza uno alla volta i campi informativi, poi legge il file tramite la funzione \emph{recv\_file}.\\
-Uno dei parametri necessari alla ricezione di un file è quello relativo alla dimensione dello stesso,
-che corrisponde ad un campo di 8 byte. Ciò implica che esiste un limite superiore, seppur molto ampio,
-relativo alla dimensione dei file che si possono inviare pari a $2^{64} - 1$ byte.\\
-L'arternativa sarebbe stata quella di usare una variabile a 32 bit, ma si sarebbe avuto un limite inferiore ai 4 GiB,
-leggermente limitante per un'applicazione FTP.
-
+\caption{Generico messaggio di comando}
+\end{figure}
+Una volta impostati i vari campi in un buffer, se non va inviato un file, i dati
+vengono passati direttamente al livello di trasporto virtuale.\\
+Se altrimenti, va inviato un file, viene chiamata la funzione \emph{send\_file}, 
+i campi informativi vengono considerati come header per il file ed il tutto viene 
+frammentato (per non allocare troppa memoria) e passato al livello sottostante
+un pò alla volta. La costante MAX\_BUFSIZE indica il numero di byte massimo di
+cui si compone un frammento di messaggio.\\
+Lato opposto il ricevente analizza uno alla volta i campi informativi, poi 
+legge il file tramite la funzione \emph{recv\_file}.\\
+Uno dei parametri necessari alla ricezione di un file è quello relativo alla sua
+dimensione, che corrisponde ad un campo di 8 byte. Ciò implica che esiste un 
+limite superiore, seppur molto ampio, relativo alla dimensione dei file che si 
+possono inviare, pari a $2^{64} - 1$ byte.\\
+L'arternativa sarebbe stata quella di usare una variabile a 32 bit, che avrebbe
+posto un limite inferiore ai 4 GiB, leggermente limitante per un'applicazione FTP.
 \begin{lstlisting}[title=cmd\_commons.c]
 void send_file(int fd, void *header, size_t file_size, 
 				size_t header_size)								
@@ -91,6 +106,9 @@ void recv_file(int fd, size_t size)
 	}
 }
 \end{lstlisting}
+La funzione \emph{recv\_file} attende dati dal livello di trasporto virtuale
+fintanto che non ne ha ricevuta una quantità pari esattamente alla dimensione
+del file.
 
 \input{sections/implementazione/proto_sub/list}
 \input{sections/implementazione/proto_sub/get}

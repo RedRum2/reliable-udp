@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 
             handle_error("waiting for connection requests");
         }
-		puts("got connection request");
+        puts("got connection request");
 
         /* create a new proccess to handle the client requests */
         pid = fork();

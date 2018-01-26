@@ -1,6 +1,9 @@
 \subsection{Simulazione rete inaffidabile}
-Il progetto è stato testato ed eseguito all'interno di una rete locale, pertanto è stato necessario simulare la perdita dei pacchetti.\\
-Ciò è stato fatto introducendo delle opportune funzioni per l'invio dei dati, le quali inviano se e soltanto se viene estratto un numero casuale maggiore di una data probabilità di perdita.
+Il progetto è stato testato ed eseguito all'interno di una rete locale, 
+pertanto è stato necessario simulare la perdita dei pacchetti.\\
+Ciò è stato fatto introducendo delle opportune funzioni per l'invio dei dati,
+le quali inviano se e soltanto se viene estratto un numero casuale maggiore 
+di una data probabilità di perdita.
 
 \begin{lstlisting}[title=simul\_udt.c]
 ssize_t udt_sendto(int sockfd, const void *buf, size_t len, 
@@ -36,3 +39,6 @@ double randgen(void)
 	return drand48();
 }
 \end{lstlisting}
+La funzione \emph{udt\_sendto} invia dati all'host passato come argomento,
+mentre la \emph{udt\_send} invia dati all'host fissato come endpoint a 
+seguito di una \emph{connect}.

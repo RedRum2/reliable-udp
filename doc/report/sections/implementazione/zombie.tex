@@ -1,0 +1,98 @@
+\subsection{Gestione dei processi}
+Una questione non trascurabile è sicuramente quella legata alla gestione
+dei processi del sistema.\\
+Essendo il server un modello multiprocesso, è fondamentale che ci sia un 
+giusto controllo sui processi, in particolare è necassario che ogni 
+processo termini la propria esecuzione se il client di cui si occupa non
+effettua richieste.\\
+Affinché ciò si verifichi, il servizio di ricezione rimane bloccato in 
+lettura sulla socket per un tempo limitato, infatti se non riceve segmenti
+in questo arco di tempo, viene chiamata la \emph{exit()} ed il processo 
+termina. In tal caso la connessione viene considerata scaduta.
+\begin{lstlisting}[title=transport.c]
+void *recv_service()
+{
+    .....
+
+    /* set connection timeout */
+    timeout.tv_sec = 60;
+    timeout.tv_usec = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, 
+        sizeof(timeout)) == -1)
+        handle_error("recv_service - setting socket timeout");
+
+    for (;;) {
+
+        r = read(sockfd, buffer, max_recvsize);
+        if (r == -1) {
+            if (errno == EINTR)
+                // signal interruption
+                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // timeout expired: close connection
+                puts("Connection expired");
+                exit(EXIT_SUCCESS);
+            }
+            handle_error("recv_service - read()");
+        }
+
+        /* segment received */
+        .....
+
+        /* ACK received */
+        .....
+    }
+    .....
+}
+\end{lstlisting}
+Quando un processo server termina la propria esecuzione, invia il segnale
+SIGCHILD al processo server principale, che viene subito intercettato in 
+modo tale che possano essere liberate le risorse.\\
+Prima della creazione dei processi figli, il processo padre effettua la
+la registrazione di un handler per il segnale SIGCHILD, il quale 
+chiama la funzione  \emph{wait\_pid} in maniera non bloccante soltanto quando 
+se ne ha effettivamente bisogno.
+\begin{lstlisting}[title=server.c]
+int main()
+{
+    ..... 
+
+    /* bind the socket to the address */
+    if (bind(sockfd, (struct sockaddr *) &servaddr, 
+             sizeof(servaddr)) == -1)
+        handle_error("bind()");
+
+    /* register SIGCHLD signal handler */
+    register_zombie_handler();
+
+    for (;;) {
+        /* wait for connection requests */
+        /* create a new proccess to handle the client requests */
+        ..... 
+    }
+    .....
+}
+
+void register_zombie_handler(void)
+{
+    struct sigaction sa;
+
+    sa.sa_handler = sig_zombie_handler;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGCHLD, &sa, NULL) == -1)
+        handle_error("sigaction()");
+}
+
+void sig_zombie_handler(int sig)
+{
+    pid_t pid;
+    (void) sig;
+
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+        ;
+
+    return;
+}
+\end{lstlisting}

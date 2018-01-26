@@ -89,8 +89,8 @@ int shift(struct bit_array *array, unsigned int shift)
         return -1;
     }
 
-    a = array->bits;			// var array
-    n = shift / K_BIT;			// var index
+    a = array->bits;            // var array
+    n = shift / K_BIT;          // var index
     x = shift % K_BIT;          // relative shift
 
     if (n) {
@@ -98,11 +98,11 @@ int shift(struct bit_array *array, unsigned int shift)
             a[i] = a[n + i];
         memset(a + i, 0, (N_VAR - i) * sizeof(uint32_t));
     }
-	if (x) {
-		for (i = 0; i < N_VAR - 1; i++)
-			a[i] = (a[i] >> x) | (a[i + 1] << (K_BIT - x));
-		a[N_VAR - 1] >>= x;
-	}
+    if (x) {
+        for (i = 0; i < N_VAR - 1; i++)
+            a[i] = (a[i] >> x) | (a[i + 1] << (K_BIT - x));
+        a[N_VAR - 1] >>= x;
+    }
 
     return 0;
 }

@@ -1,9 +1,13 @@
-\subsection{Trasferimento affidabile}
-Il trasferimento affidabile è stato realizzato implementando l'algoritmo \emph{selective repeat} descritto nel libro [riferimento].\\
-Tale implementazione è stata ``isolata'' all'interno di un modulo apposito, creando un livello di trasporto virtuale,
-il quale si occupa di suddividere i messaggi in segmenti di giusta misura e di gestirne gli invii, le ritrasmissioni e la ricezione.
-
+\subsection{Trasferimento affidabile: struttura}
+L'implementazione del trasferimento affidabile è stata ``isolata'' all'interno
+di un modulo apposito (\emph{transport.c}), creando un livello di trasporto 
+virtuale, il quale si occupa di suddividere i messaggi in segmenti di giusta 
+misura e di gestirne gli invii, le ritrasmissioni e la ricezione.
+%
 \input{sections/implementazione/rdt_sub/interfaccia}
-\input{sections/implementazione/rdt_sub/struttura}
-\input{sections/implementazione/rdt_sub/sr_sender}
-\input{sections/implementazione/rdt_sub/sr_receiver}
+\input{sections/implementazione/rdt_sub/segmenti}
+\input{sections/implementazione/rdt_sub/servizi}
+\input{sections/implementazione/rdt_sub/buffer}
+\input{sections/implementazione/rdt_sub/finestra}
+\input{sections/implementazione/rdt_sub/timeout}
+%

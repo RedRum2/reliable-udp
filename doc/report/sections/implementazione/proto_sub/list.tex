@@ -1,13 +1,21 @@
 \subsubsection{Comando LIST}
-
-Nel messaggio di comando list non sono previsti campi aggiuntivi oltre a quello che specifica il comando.
-
-\includegraphics[scale=0.35]{images/list_client}
-
-Il server ricevuto il comando, esegue il comando di sistema \emph{ls} redirigendo l'output sul file \emph{file\_list.txt}, dopodiché viene impostato il messaggio di risposta con la dimensione del file (campo da 64 bit) e a seguire il file contenente la lista dei file disponibili al download.
-
-\includegraphics[scale=0.35]{images/list_server}
-
+Nel messaggio di comando list (Figura 2) non sono previsti campi aggiuntivi 
+oltre a quello che specifica il comando.
+\begin{figure}[!h]
+	\includegraphics[scale=0.35]{images/list_client}
+	\caption{Messaggio di comando LIST}
+\end{figure}
+Il server ricevuto il comando, esegue il comando di sistema \emph{ls} 
+redirigendone l'output sul file \emph{file\_list.txt}, dopodiché viene 
+impostato il messaggio di risposta (Figura 3) con la dimensione del file 
+(campo da 64 bit) e a seguire il file contenente la lista dei file 
+disponibili al download.\\
+Infine il client riceve il messaggio di risposta e stampa a schermo il 
+contenuto del file.
+\begin{figure}[!h]
+	\includegraphics[scale=0.35]{images/list_server}
+	\caption{Messaggio di risposta LIST}
+\end{figure}
 \begin{lstlisting}[title=clicmd.c]
 void cli_list()
 {
@@ -34,7 +42,6 @@ void cli_list()
     free(buffer);
 }                                                                
 \end{lstlisting}
-
 \begin{lstlisting}[title=srvcmd.c]
 void srv_list(void)
 {

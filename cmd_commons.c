@@ -73,5 +73,8 @@ void recv_file(int fd, size_t size)
 
         if (writen(fd, buffer, buf_size) == -1)
             handle_error("writen() - writing received file");
+        printf("\rDownloading file: %u%%", i * 100 / n);
+        fflush(stdout);
     }
+    printf("\n");
 }

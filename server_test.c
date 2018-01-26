@@ -9,9 +9,6 @@
 void parse_args(int argc, char **argv, struct proto_params *params,
                 uint16_t * port);
 void server_job(void);
-void create_connection(struct proto_params *params,
-                       struct sockaddr_in *cliaddr, socklen_t clilen);
-void test_job(void);
 void create_test_connection(struct proto_params *params,
                             struct sockaddr_in *cliaddr, socklen_t clilen);
 void register_zombie_handler(void);
@@ -30,7 +27,7 @@ int main(int argc, char **argv)
 
 
     /* init configuration parameters with default values */
-    params.N = 30;
+    params.N = 127;
     params.T = 500;             // milliseconds
     params.P = 10;              // decimal part
     params.adaptive = 0;        // boolean value
@@ -75,10 +72,9 @@ int main(int argc, char **argv)
     /* register SIGCHLD signal handler */
     register_zombie_handler();
 
-    for (; params.N < MAX_WIDTH; params.N += 10) {
-        //for (params.N = MIN_WIDTH; params.N < MAX_WIDTH; params.N += 10) {
-        //for (params.P = 0; params.P < MAX_LOSS; params.N += 10 ) {
-        //for (params.T = MIN_TIMEOUT; params.T < MAX_TIMEOUT; params.N += ) {
+    //for ( ; params.N <= MAX_WIDTH; params.N += 10) {
+    //for ( ; params.T < MAX_TIMEOUT; params.T += 100) {
+    for (; params.P < MAX_LOSS; params.P += 10) {
 
         clilen = sizeof(cliaddr);
         memset((void *) &cliaddr, 0, clilen);
@@ -176,32 +172,6 @@ void parse_args(int argc, char **argv, struct proto_params *params,
         *port = strtoport(argv[optind]);
 }
 
-
-
-
-void create_connection(struct proto_params *params,
-                       struct sockaddr_in *cliaddr, socklen_t clilen)
-{
-    int connsd;
-
-    /* create a connection socket */
-    if ((connsd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-        handle_error("socket()");
-
-    /* set the end point */
-    if (connect(connsd, (struct sockaddr *) cliaddr, clilen) == -1)
-        handle_error("socket()");
-
-    /* send SYN_ACK with protocol parameters */
-    if (udt_send
-        (connsd, params, sizeof(struct proto_params),
-         params->P / 100.0) == -1)
-        handle_error("udt_send() - sending SYN_ACK");
-
-    init_transport(connsd, params);
-
-    server_job();
-}
 
 
 void server_job(void)

@@ -37,7 +37,7 @@ int main(int argc, char **argv)
 
 
     /* try to connect */
-	puts("connecting...");
+    puts("connecting...");
     create_connection(sockfd, &servaddr);
     puts("connected!");
 
@@ -119,7 +119,7 @@ void client_job(void)
 
         filename = NULL;
 
-		puts("enter a command \nLIST \nGET <filename> \nPUT <filename>");
+        puts("enter a command \nLIST \nGET <filename> \nPUT <filename>");
         if (!fgets(line, MAXLINE, stdin)) {
             perror("fgets()");
             continue;

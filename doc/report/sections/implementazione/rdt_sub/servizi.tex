@@ -1,0 +1,93 @@
+\subsubsection{Servizi}
+Il livello di trasporto virtuale è composto principalmente da due servizi 
+indipendenti:
+%
+\begin{itemize}
+\item \textbf{send\_service}: servizio che si occupa dell'invio dei segmenti e
+della gestione di gran parte del protocollo lato mittente.
+\item \textbf{recv\_service}: servizio che si occupa principalmente della
+ricezione di ack e segmenti, pertanto interpreta il lato destinatario del 
+protocollo e collabora con il lato mittente.
+\end{itemize}
+%
+Entrambi vengono implementati tramite thread per renderli indipendenti dal 
+thread principale ``applicativo'' e affinché sia possibile che un host invii 
+segmenti e riceva ACK contemporaneamente.\\
+L'operazione di creazione di questi thread, sia lato mittente che destinatario
+(con gli stessi parametri), equivale all'instaurazione della connessione,
+e viene eseguita dalla funzione \emph{init\_transport}.
+%
+\begin{lstlisting}[title=transport.c]
+/* shared structures */
+struct circular_buffer recv_cb;
+struct circular_buffer send_cb;
+struct event e;
+/* threads args to keep alive */
+struct shared_tools recv_tools, send_tools;
+
+void init_transport(int sockfd, struct proto_params *params)
+{
+    pthread_t t;
+
+    /* initialize circular buffers */
+
+    recv_cb.E = recv_cb.S = 0;
+    send_cb.E = send_cb.S = 0;
+
+    /* initialize shared tools */
+
+    recv_tools.sockfd = sockfd;
+    recv_tools.e = &e;
+    recv_tools.cb = &recv_cb;
+    recv_tools.params = params;
+
+    send_tools = recv_tools;
+    send_tools.cb = &send_cb;
+
+    /* initialize mutexes */
+
+    if (pthread_mutex_init(&e.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+    if (pthread_mutex_init(&recv_cb.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+    if (pthread_mutex_init(&send_cb.mtx, NULL) != 0)
+        handle_error("pthread_mutex_init()");
+
+    /* initialize conditions */
+
+    if (pthread_cond_init(&recv_cb.cnd_not_empty, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&send_cb.cnd_not_empty, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+    if (pthread_cond_init(&recv_cb.cnd_not_full, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&send_cb.cnd_not_full, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+    if (pthread_cond_init(&e.cnd_event, NULL) != 0)
+        handle_error("pthread_cond_init()");
+    if (pthread_cond_init(&e.cnd_no_event, NULL) != 0)
+        handle_error("pthread_cond_init()");
+
+    /* create threads */
+
+    if (pthread_create(&t, NULL, recv_service, &recv_tools) != 0)
+        handle_error("creating recv_service");
+
+    if (pthread_create(&t, NULL, send_service, &send_tools) != 0)
+        handle_error("creating send_service");
+}
+\end{lstlisting}
+%
+Il servizio di invio è stato implementato come un thread che rimane in attesa
+fintanto che non avviene uno dei seguenti eventi:
+\begin{itemize}
+\item[-]Ricezione dati dal livello applicativo;
+\item[-]Ricezione di un aknowledgment dalla rete;
+\item[-]Scadenza di un timeout relativo ad un segmento inviato.
+\end{itemize}
+%
+\input{sections/implementazione/rdt_sub/send_service}
+\input{sections/implementazione/rdt_sub/recv_service}
+%

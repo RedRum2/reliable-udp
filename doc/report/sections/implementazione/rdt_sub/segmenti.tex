@@ -1,0 +1,33 @@
+\subsubsection{Segmenti}
+Lo strato di trasporto virtuale è visto dall'esterno come una ``scatola nera''
+che prende in ingresso messaggi dal livello applicativo, e restituisce i 
+messaggi di risposta dell'host interlocutore.\\
+Nello specifico un messaggio viene frammentato in segmenti di una misura 
+massima prefissata (MSS), i quali poi vengono inviati e gestiti tramite 
+l'algoritmo di trasferimento affidabile. Questa ulteriore frammentazione è 
+necessaria per evitare che un segmento venga ulteriormente suddiviso a livello
+di collegamento, cosa che potrebbe causare la perdita parziale dei segmenti.\\
+La dimensione massima del segmento è stata calcolata considerando un MTU 
+relativo ad un collegamento Ethernet standard di 1500 byte, un header UDP/IP
+di 28 byte ed un header contente i parametri necessari all'esecuzione 
+dell'algoritmo: il numero di sequenza del segmento pari ad 1 byte e la 
+quantità di byte significativi nel payload pari a 2 byte.
+Il numero di sequenza è contenuto in una variabile da 8 bit, pertanto può
+variare da 0 a 255 (MAXSEQNUM - 1).
+%MSS = MTU - UDP/IP - SR
+\begin{lstlisting}[title=transport.h]
+
+#define MAXSEQNUM       (1 << 8)
+#define MTU             1500
+#define UDPIP_HEADER    28
+#define SR_HEADER       (sizeof(uint8_t) + sizeof(uint16_t))
+
+#define MSS             (MTU - UDPIP_HEADER - SR_HEADER)
+
+
+struct segment {
+	uint8_t  seqnum;
+	uint16_t size;
+	uint8_t  payload[MSS];
+};
+\end{lstlisting}

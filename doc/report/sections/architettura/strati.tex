@@ -1,21 +1,22 @@
 \subsection{Stratificazione del sistema}
 Per realizzare un'applicazione basata su UDP che garantisca una comunicazione 
-affidabile è stato necessario introdurre a livello applicativo uno strato che
-si ponesse logicamente tra applicazione e livello di trasporto e che astraesse
+affidabile, è stato necessario introdurre a livello applicativo uno strato che
+si ponesse logicamente tra applicazione e livello di trasporto, e che astraesse
 un protocollo di trasporto affidabile.\\
-Tale strato di ``pseudo-trasporto'', (o livello di trasporto virtuale), fornisce un'interfaccia all'applicazione 
+Tale strato di ``pseudo-trasporto'', o livello di trasporto virtuale, fornisce 
+un'interfaccia all'applicazione 
 per mezzo delle funzioni \emph{rdt\_send} e \emph{rdt\_recv} simile a quella 
 offerta dalle chiamate di sistema \emph{write} e \emph{read} utilizzate per TCP, 
 quindi tutto ciò che riguarda l'implementazione necessaria a garantire 
 affidabilità è trasparente al livello applicativo puro.\\
-Tuttavia la trasparenza non è del tutto completa perché, affinché questo strato
+Tuttavia la trasparenza non è del tutto completa, perché, affinché questo strato
 di trasporto virtuale funzioni, è necessario inizializzare le strutture che ne 
 fanno parte, sia da un lato che dall'altro della comunicazione con gli stessi 
 parametri. Questo implica che prima di poter comunicare in modo affidabile, 
 client e server devono accordarsi sulla scelta dei parametri, in particolare, 
 vengono impostati all'avvio del server, per poi essere inviati ai client che 
 vogliono essere serviti.\\
-Un'altra caratteristica utile, è che utilizzare la \emph{rdt\_recv}, è 
+Un'altra caratteristica utile, è che utilizzare la \emph{rdt\_recv} è 
 funzionalmente identico ad effettuare una \emph{read} da una socket in TCP, 
 infatti è possibile effettuare letture successive dello stesso messaggio, senza 
-che gli altri dati che si devono ancora leggere vadano persi. 
+che i dati non ancora letti vadano persi. 
