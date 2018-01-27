@@ -2,7 +2,7 @@
 L'analisi delle prestazioni al variare del parametro N sono state svolte in 
 condizioni di vario tipo, ma in ogni caso si osserva chiaramente che il tempo
 impiegato decresce esponenzialmente all'aumentare dell'ampiezza della finestra
-N.\\
+N (figure \ref{n1} e \ref{n2}).\\
 Confrontando i due tipo di algoritmi, con timeout addatativo e non, si osserva
 che per un timeout iniziale di 500 millisecondi, quello di tipo adattativo 
 ottiene performance migliori in ogni caso, mentre per un timeout iniziale di 
@@ -23,6 +23,7 @@ errore sul calcolo dell'RTT e quindi aumento del timeout.
 	\caption{prestazioni al variare dell'ampiezza della finestra N,
 			 timeout T = 500 ms, probabilità di perdita bassa (P = 10\%),
 			 media (P = 40\%) e alta (P = 70\%)}
+	\label{n1}
 \end{figure}
 \begin{figure}[!hp]
 	\includegraphics[scale=0.5]{images/N_T250_P10}
@@ -31,4 +32,5 @@ errore sul calcolo dell'RTT e quindi aumento del timeout.
 	\caption{prestazioni al variare dell'ampiezza della finestra N,
 			 timeout T = 250 ms, probabilità di perdita bassa (P = 10\%),
 			 media (P = 40\%) e alta (P = 70\%)}
+	\label{n2}
 \end{figure}
