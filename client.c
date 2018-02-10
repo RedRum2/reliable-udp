@@ -136,24 +136,19 @@ void client_job(void)
         switch (cmd_code) {
 
         case LIST:
-            //puts("LIST");
             cli_list();
             break;
 
         case GET:
-            //puts("case GET");
             filename = extract_filename(line);
             if (!filename)
                 handle_error("parsing filename from input()");
-            //fprintf(stderr, "filename: \"%s\"\n", filename);
             cli_get(filename);
             break;
 
         case PUT:
-            //puts("case PUT");
             if ((filename = extract_filename(line)) == NULL)
                 handle_error("parsing filename from input()");
-            //fprintf(stderr, "filename: \"%s\"\n", filename);
             cli_put(filename);
             break;
 
